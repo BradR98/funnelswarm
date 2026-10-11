@@ -1,16 +1,16 @@
 # Project Status
 
-_Last updated: 2026-10-05_
+_Last updated: 2026-10-11_
 
 | Field | Value |
 |-------|-------|
-| **Current Phase** | Phase 11 (discrete columns/trapdoors/barricades, `?level=N`) implemented, headless-verified, not device-tested. Earlier: Phase 5 delivered (100-level procedural campaign, bosses, bumpers, black holes); balance tuning outstanding |
-| **Active Focus** | Validate Phase 1 `index.html` on real phones; begin Phase 2 lane flow |
+| **Current Phase** | Phase 18 shipped: v18 / cache c18 live on `main` (tilted world + flat HUD, endless pour on L1-8, 22 shots/s cleave-2 weapon, L1 base HP 250). Headless suite green (~200 checks). Not device-tested. |
+| **Active Focus** | Rebalance Levels 9+ and bosses for the new weapon and HP scale (BACKLOG P16-5, P17-4); real-device playtest |
 | **Known Blockers** | None |
 
 ## Tech Stack Constraints
 
-- Single self-contained `index.html` (HTML5 Canvas + vanilla JS + embedded CSS)
+- Single self-contained `index.html` (HTML5 Canvas + vanilla JS + embedded CSS), plus the PWA files
 - No npm dependencies, no frameworks, no external assets, no ads or trackers
 - Portrait, mobile-first; 60 FPS target via `requestAnimationFrame`
 - Zero per-frame allocation in hot paths (pooled mobs, typed arrays)
@@ -18,25 +18,25 @@ _Last updated: 2026-10-05_
 
 ## Verification Checklist
 
-- [x] Repo initialized, default branch `main`
-- [x] Docs created (README, BACKLOG, CHANGELOG, PROJECT_STATUS)
-- [x] `index.html` JS passes syntax check and headless logic test
-- [x] Headless suite: 28 checks (gates, collisions, shield, funnel, levels)
+- [x] Repo on GitHub (`BradR98/mob-swarm`), Pages live from `main`
+- [x] Docs: README, ARCHITECTURE, BACKLOG, CHANGELOG, PROJECT_STATUS
+- [x] Headless suite passes (`node --expose-gc test/headless.js`)
+- [x] Tier 1 (L1-8) bot sim: 10/10 wins per level, L1 about 17s (`node test/pour-sim.js`)
+- [x] PWA: manifest, service worker, cache-busting update lifecycle
+- [ ] Levels 9+ and bosses re-simulated on the 22 shots/s weapon and 1/3 HP scale
+- [ ] 150-level soak re-run (last run before Phase 15)
 - [ ] Audio verified on a real device (iOS needs a first tap to unlock)
-- [ ] Balance: bot sim shows idealised play clears the base in ~5s on all levels; decide on base HP / wave timing (see CHANGELOG)
-- [ ] Manual test on iOS Safari
-- [ ] Manual test on Android Chrome
+- [ ] Manual test on iOS Safari and Android Chrome (tilt readability, thumb ergonomics, installed-PWA update)
 - [ ] Sustained 60 FPS confirmed with 500+ active mobs
-- [ ] Remote pushed to GitHub (requires valid `gh` auth)
-
-## Open decisions
-- Boss tuning: L10 is trivial (~1s), L20+ unwinnable at default speed. Options: slower boss, boss spawning above the gate field only, or throughput-aware boss HP.
-- Base HP: 800+400n ignores gate throughput; clear times range 21-114s on L1-L9.
-- Hand off to Gemini Pro with the output of `node test/bot-sim.js` and `node test/boss-sim.js`.
+- [ ] Player gameplay guide (BACKLOG P18-3)
 
 ## Handoff Notes
 
-If model quota runs out, continue from the next unchecked item in [BACKLOG.md](BACKLOG.md). Commit small and often.
+Continue from the next unchecked item in [BACKLOG.md](BACKLOG.md). Commit small and often; each release bumps the `#ver` label and `CACHE_NAME` in `sw.js`. Push with `env -u GITHUB_TOKEN git push origin main` if a stale `GITHUB_TOKEN` env var breaks auth.
+
+---
+
+# Historical phase notes (Phases 8-10, kept for reference)
 
 ## Phase 8 balance status
 Terrain-aware perfect-aim bot, no reds (`node test/bot-sim.js 2`): base TTK L1 32s, L6 28s, L11 19s, L16 48s, L26 34s, L36 22s, L49 30s, L51 42s (target ~35-42s). Boss TTK (cal run after the final terrain fix): L10 42s, L30 35s, L40 38s, L60 41s, but L20 72s and L50 84s (target 45s).

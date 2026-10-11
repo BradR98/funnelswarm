@@ -184,3 +184,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HP curve shifted down: gateless pour levels = 250 x 1.02^(n-1) (L1 = 250, L2 = 255); every other base HP and boss HP x 1/3 (HP_SCALE). L1 bot win time about 33s -> 17s (10/10).
 - Perspective tilt locked to the approved preview (45deg, 800px, 1.9x stretch), query overrides removed; merged `feature/perspective-tilt` into main (flat #hud overlay + flat input preserved).
 - ARCHITECTURE.md handover added.
+
+## Docs refresh (no version change)
+- README rewritten for v18 (split rendering, endless pour, weapon, PWA, dev tools, testing). PROJECT_STATUS refreshed. Player gameplay guide added to the backlog (P18-3).
