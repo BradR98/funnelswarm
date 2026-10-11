@@ -112,3 +112,7 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done. Suggested model: **Sonnet** =
 | P16-3 | Lawnmower weapon: 20 shots/s, cleave 3, 110px/s cone | [x] | Pro |
 | P16-4 | Tier 1 (L1-8) scaling from the L1 baseline + pour-sim | [x] | Pro |
 | P16-5 | Rebalance L9+ on the 20 shots/s weapon (bot-sim/boss-sim/soak not re-run) | [ ] | Pro |
+| P17-1 | Infinite pour on L1-8 (win only when base HP hits 0) | [x] | Pro |
+| P17-2 | Weapon nerf: 22 shots/s, cleave 2 (max 44 kills/s vs 45/s pour) | [x] | Pro |
+| P17-3 | Attrition: pour rate compounds +2%/level | [x] | Pro |
+| P17-4 | Infinite pour for L9+ / boss levels, rebalance on the new weapon (sims/soak not re-run) | [ ] | Pro |

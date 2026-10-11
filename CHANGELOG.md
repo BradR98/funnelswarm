@@ -167,3 +167,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Lawnmower weapon (Armory.standard): 111ms -> 50ms (9 -> 20 shots/s), piercing 1 -> 3 (a blue cleaves 3 red HP), 110px/s random sideways spray (a held trigger sweeps the whole lane). SHOTS_PER_SEC 9 -> 20 so base HP formulas keep the same perfect-stream time-to-kill.
 - Tier 1 layout: L2 gets one destructible gray barricade, 2nd column at L3 (3rd at L6), barricades sit low in their free band.
 - test/pour-sim.js: perfect-aim bot over L1-8. New debug hook clearReds. Headless: 200 PASS / 0 FAIL; mechanic tests run on a legacy 1.0x weapon, Phase 16 tests assert the lawnmower.
+
+## Phase 17 - Infinite pours & the 2% attrition scale (v17 / cache c16)
+- L1-8: the pour never ends (queue refills below 60); only the base HP reaching 0 ends the level (already an instant win).
+- Weapon: 45ms (22.2 shots/s), cleave 3 -> 2, same 110px/s spray. Theoretical max 44 kills/s vs the 45/s L1 pour; measured, the swarm grows slowly (about 55 -> 150 reds over ~34s).
+- Finding: with an infinite pour the blues are almost all spent on reds, so only ~1-3 leak to the base per second. 735 base HP was unreachable (cannon died at ~30s). Gateless pour levels (L1-2) now have a BASE_HIT of 15 per leaked blue and need ~50 leaks (HP 750 on L1); gate pour levels take base HP x0.6.
+- Attrition: pour rate = 45 x 1.02^(level-1) (L8 = 51.7/s). Boards with more columns pour 1/(1+0.3 x (cols-1)) per lane, because one cannon guards one lane (L6 was 3/10 without it).
+- test/pour-sim L1-8 x10: 80/80 wins, no cannon damage. Headless suite green.
