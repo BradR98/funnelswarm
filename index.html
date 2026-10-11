@@ -101,7 +101,7 @@
       <button id="restart" type="button">Next Level</button>
       <div id="warpRow"><label for="lvlInput">Level</label><input id="lvlInput" type="number" inputmode="numeric" min="1" max="9999" value="1"><button id="warp" type="button">Warp</button></div>
     </div>
-    <span id="ver">v17-tilt · c17</span>
+    <span id="ver">v18 · c18</span>
     <button id="pause" type="button" aria-label="Pause game" title="Pause">&#10074;&#10074;</button>
     <button id="mute" type="button" aria-label="Mute audio" title="Mute / unmute">&#128266;</button>
   </div>
@@ -170,7 +170,8 @@
   var NEG_RECHARGE = 0.5;        // '-' gates regain n * this per second
   var BOSS_W = W * 0.4 * ES, BOSS_H = 56 * ES, BOSS_STRAFE = 22;   // mothership: 40% of screen width, slow drift (px/s)
   var SHOTS_PER_SEC = 20;                 // must match FIRE_RATE; used by the HP formulas
-  var POUR_N = 500, POUR_RATE = 45, ATTRITION = 0.02, BASE_HIT = 15, POUR_HITS = 50, POUR_GATE_HP = 0.6, POUR_COL_EASE = 0.3, POUR_MAX_LEVEL = 8, POUR_SPEED0 = 0.4, POUR_REFILL = 60;   // Phase 16: Tier 1 (L1-8) is one sustained pour of reds
+  var POUR_N = 500, POUR_RATE = 45, ATTRITION = 0.02, BASE_HIT = 15, POUR_BASE_HP = 250, POUR_GATE_HP = 0.6, POUR_COL_EASE = 0.3, POUR_MAX_LEVEL = 8, POUR_SPEED0 = 0.4, POUR_REFILL = 60;   // Phase 16: Tier 1 (L1-8) is one sustained pour of reds
+  var HP_SCALE = 1 / 3;                   // Phase 18: whole HP curve shifted down (L1 base = 250); every base / boss HP keeps its old progression x HP_SCALE
   var BASE_TTK = 35, BOSS_TTK = 45;       // target perfect-stream seconds to clear
   var HP_PER_TIER = 0.02;                 // +2% base HP per tier
   var MTM_EFF = 1.05, MTM_EFF_EXP = 0.3;                    // measured share of the theoretical multiplier a real stream achieves
@@ -390,10 +391,10 @@
 
     // HP is set last so obstacle derating can use the final layout: bumpers and black holes bleed stream throughput
     L.throughput = levelThroughput(L.mtm) * Math.pow(OBST_BUMPER_EFF, L.bumpers.length) * Math.pow(OBST_HOLE_EFF, L.holes.length) * L.terrainEff;
-    L.baseHP = Math.round(L.throughput * BASE_TTK * (1 + HP_PER_TIER * (tier - 1)));
+    L.baseHP = Math.round(L.throughput * BASE_TTK * HP_SCALE * (1 + HP_PER_TIER * (tier - 1)));
     if (L.pour && L.gates.length) L.baseHP = Math.round(L.baseHP * POUR_GATE_HP);   // an endless pour starves gate lanes of leaked blues too: shave their base HP
-    if (L.pour && L.gates.length === 0) { L.baseHit = BASE_HIT; L.baseHP = Math.round(POUR_HITS * Math.pow(1 + ATTRITION, n - 1)) * BASE_HIT; }   // gateless pour levels: a leaked blue hits for BASE_HIT; ~POUR_HITS leaks kill the base
-    L.bossHP = isBoss ? Math.round(L.throughput * BOSS_TTK) : 0;
+    if (L.pour && L.gates.length === 0) { L.baseHit = BASE_HIT; L.baseHP = Math.round(POUR_BASE_HP * Math.pow(1 + ATTRITION, n - 1)); }   // gateless pour levels: a leaked blue hits for BASE_HIT; about POUR_BASE_HP / BASE_HIT = 17 leaks kill the base on L1
+    L.bossHP = isBoss ? Math.round(L.throughput * BOSS_TTK * HP_SCALE) : 0;
     return L;
   }
 
@@ -644,9 +645,8 @@
   var hudCanvas = document.getElementById('hud'), hctx = hudCanvas.getContext('2d');   // flat overlay: HUD, base bar, trackpad, flash
   var tiltEl = document.getElementById('tilt');
   var ctx = wctx;                                                // render() swaps this between the two canvases
-  // Tilt tuning (query string): ?tilt=50 (degrees, 0 = flat) &persp=800 (px) &stretch=1.6 (max vertical stretch of the world canvas)
-  function qnum(name, def) { var m = (typeof location !== 'undefined' && location.search) ? new RegExp('[?&]' + name + '=(-?[0-9.]+)').exec(location.search) : null; return m ? parseFloat(m[1]) : def; }
-  var TILT = qnum('tilt', 45), PERSP = qnum('persp', 800), MAX_STRETCH = qnum('stretch', 1.9), WORLD_TOP = BASE_Y, HUD_TOP = 58;
+  // Perspective (locked to the approved preview): world canvas tilted 45deg about its bottom edge, 800px perspective, up to 1.9x vertical stretch
+  var TILT = 45, PERSP = 800, MAX_STRETCH = 1.9, WORLD_TOP = BASE_Y, HUD_TOP = 58;
   var baseScreenBottom = BASE_BOTTOM;                           // logical y (flat HUD space) where the far end of the lanes meets the base bar
   var stage = document.getElementById('stage');
   var overlay = document.getElementById('overlay');

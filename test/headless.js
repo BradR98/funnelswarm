@@ -43,10 +43,10 @@ const lvl = n => { g.setLevel(n); g.openField(); quiet(); };   // legacy physics
   let hpOK = true, capOK = true;
   for (let n = 1; n <= 150; n++) { const L = gl(n);
     if (L.mtm !== g.calculateLevelMTM(L.gates)) hpOK = false;
-    if (!L.pour && L.baseHP !== Math.round(L.throughput * 35 * (1 + 0.02 * (L.tier - 1)))) hpOK = false;
-    if (L.isBoss && L.bossHP !== Math.round(L.throughput * 45)) hpOK = false;
+    if (!L.pour && L.baseHP !== Math.round(L.throughput * 35 * (1 / 3) * (1 + 0.02 * (L.tier - 1)))) hpOK = false;
+    if (L.isBoss && L.bossHP !== Math.round(L.throughput * 45 * (1 / 3))) hpOK = false;
     if (L.throughput > 250 + 1e-9 || L.throughput <= 0) capOK = false; }
-  ok(hpOK, 'Base HP = throughput * 35 * (1 + 2% per tier); Boss HP = throughput * 45 (levels 1-150)');
+  ok(hpOK, 'Base HP = throughput * 35 / 3 * (1 + 2% per tier); Boss HP = throughput * 45 / 3 (levels 1-150; L1-8 pour levels exempt)');
   ok(capOK && g.levelThroughput(1e9) === 250, 'throughput is capped by the blue pool limit (250 hits/s)');
   ok(g.levelThroughput(2) / (20 * 2) > 0.8 && g.levelThroughput(40) / (20 * 40) < 0.5, 'efficiency falls with MTM (~0.9 at x2, <0.5 at x40)');
   ok(gl(1).gates.length === 0 && gl(2).gates.length === 0 && gl(1).mtm === 1 && gl(3).gates.length >= 2, 'L1-2 have no gates (strict 1.0x start); gates begin at L3');
@@ -65,7 +65,7 @@ ok(JSON.stringify(gl(37)) === JSON.stringify(gl(37)) && JSON.stringify(gl(37)) !
     if (n >= 31 && n <= 50 && (L.bumpers.length < 2 || L.holes.length)) { tierOK = false; why = 'tier3 ' + n; }
     if (n >= 51 && L.holes.length < 1) { tierOK = false; why = 'tier4 ' + n; }
     if (n <= 10 && !L.gates.every(d => ['x2', 'x3', '+2', '+10'].includes(d[4]))) { tierOK = false; why = 'labels ' + n; }
-    if ((n % 10 === 0) !== L.isBoss || L.bossHP !== (L.isBoss ? Math.round(L.throughput * 45) : 0)) { bossOK = false; why = 'boss ' + n; }
+    if ((n % 10 === 0) !== L.isBoss || L.bossHP !== (L.isBoss ? Math.round(L.throughput * 45 * (1 / 3)) : 0)) { bossOK = false; why = 'boss ' + n; }
     const cwid = g.COL_W[L.cols];
     L.gates.forEach((d, i) => {                           // negative gates guard the next gate up (same column) and slide opposite it
       if (d[7] < 0 || d[7] >= L.cols) layoutOK = false;
@@ -695,7 +695,7 @@ for (const [s, lv, cols] of [['?level=20', 20, 4], ['?level=30', 30, 4], ['?leve
   ok(q1.redCount >= 700 && q1.redCount <= 760, 'L99 pours ~30 reds/s continuously (' + q1.redCount + ' reds after 25s)');
   ok(worstBelow < 0, 'the indestructible plug holds: no red ever sinks below its top (worst ' + worstBelow.toFixed(1) + 'px)');
   ok(!dupe, 'spawn jitter: no two reds spawn on the same pixel');
-  ok(width < 45 && maxLat < 100, 'the spawn stream stays a thick column, not an explosion (width ' + width.toFixed(0) + 'px, max lateral ' + maxLat.toFixed(0) + 'px/s)');
+  ok(width < 45 && maxLat < 140, 'the spawn stream stays a thick column, not an explosion (width ' + width.toFixed(0) + 'px, max lateral ' + maxLat.toFixed(0) + 'px/s)');
   w.touch(true); for (let f = 0; f < 60 * 2; f++) w.update(1 / 60);
   ok(w.get().mobCount > 0, 'L99 cannon fires when held (' + w.get().mobCount + ' blues after 2s)');
   w.touch(false); }

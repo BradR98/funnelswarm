@@ -116,3 +116,5 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done. Suggested model: **Sonnet** =
 | P17-2 | Weapon nerf: 22 shots/s, cleave 2 (max 44 kills/s vs 45/s pour) | [x] | Pro |
 | P17-3 | Attrition: pour rate compounds +2%/level | [x] | Pro |
 | P17-4 | Infinite pour for L9+ / boss levels, rebalance on the new weapon (sims/soak not re-run) | [ ] | Pro |
+| P18-1 | HP curve x1/3, L1 base = 250 | [x] | Pro |
+| P18-2 | Tilt locked and merged | [x] | Pro |
