@@ -174,3 +174,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Finding: with an infinite pour the blues are almost all spent on reds, so only ~1-3 leak to the base per second. 735 base HP was unreachable (cannon died at ~30s). Gateless pour levels (L1-2) now have a BASE_HIT of 15 per leaked blue and need ~50 leaks (HP 750 on L1); gate pour levels take base HP x0.6.
 - Attrition: pour rate = 45 x 1.02^(level-1) (L8 = 51.7/s). Boards with more columns pour 1/(1+0.3 x (cols-1)) per lane, because one cannon guards one lane (L6 was 3/10 without it).
 - test/pour-sim L1-8 x10: 80/80 wins, no cannon damage. Headless suite green.
+
+## Experiment - perspective tilt (branch feature/perspective-tilt, NOT on main)
+- Physics world drawn on #game inside #tilt (CSS perspective + rotateX, origin bottom, top fades out); HUD, base bar + HP, trackpad strip and hit flash on a flat #hud canvas. All collisions stay 2D.
+- Touch input is read from the flat #hud canvas, so cannon X stays 1:1 with the finger.
+- Tuning via query string: ?tilt=45 (deg, 0 = flat) &persp=800 &stretch=1.9 &level=N.

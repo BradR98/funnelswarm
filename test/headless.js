@@ -495,7 +495,7 @@ for (let i = 0; i < 1500; i++) g.spawnBlue(10 + (i % 50) * 6.8, 300 + ((i / 50) 
   ok(g.BOSS_PIPE_RATE < g.PIPE_RATE, 'boss pipe slower than level pipe (' + g.BOSS_PIPE_RATE + ' < ' + g.PIPE_RATE + ' reds/s)');
   for (const n of [10, 20, 30]) { g.setLevel(n); const bp = g.bossParams(); ok(bp.wave >= 3 && bp.wave < gl(n).waveMin && bp.interval >= 8, 'boss wave (' + bp.wave + ') smaller and interval (' + bp.interval.toFixed(1) + 's) slower than level pipe (L' + n + ')'); }
   const pe = [], fake = { clientX: 5, clientY: 620, pointerId: 1, pointerType: 'touch', preventDefault() {} };
-  ok(/function pointerToLogicalX\(e\)\s*\{[^}]*clientX[^}]*\}/.test(src) && !/pointerToLogicalX[^}]*clientY/.test(src.match(/function pointerToLogicalX[\s\S]*?\n  \}/)[0]) && /canvas\.addEventListener\('pointerdown'/.test(src), 'touch input maps from clientX only, on the full canvas (works anywhere in the trackpad zone)');
+  ok(/function pointerToLogicalX\(e\)\s*\{[^}]*clientX[^}]*\}/.test(src) && !/pointerToLogicalX[^}]*clientY/.test(src.match(/function pointerToLogicalX[\s\S]*?\n  \}/)[0]) && /hudCanvas\.addEventListener\('pointerdown'/.test(src), 'touch input maps from clientX only, on the full flat overlay (works anywhere in the trackpad zone)');
 }
 // Phase 10: pause
 { lvl(1); g.setFlags({ fire: false, spawner: false }); g.spawnRed(180, 200, 0); step(g, 5);
