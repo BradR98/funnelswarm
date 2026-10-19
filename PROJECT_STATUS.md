@@ -7,6 +7,7 @@ _Last updated: 2026-10-11_
 | **Current Phase** | Phase 18 shipped: v18 / cache c18 live on `main` (tilted world + flat HUD, endless pour on L1-8, 22 shots/s cleave-2 weapon, L1 base HP 250). Headless suite green (~200 checks). Not device-tested. |
 | **Active Focus** | Rebalance Levels 9+ and bosses for the new weapon and HP scale (BACKLOG P16-5, P17-4); real-device playtest |
 | **Known Blockers** | None |
+| **Experiment** | `feature/funnel-logic` branch: centre-lane funnel spawn + spill + staggered barricades; local preview only, `main` and the live site untouched. |
 
 ## Tech Stack Constraints
 

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Funnel logic (branch `feature/funnel-logic`, not yet on `main`)
+- **Single-column spawn:** every red wave, threat-budget stream and endless-pour red now leaves the base from the centre lane only (odd lane counts: the middle lane; even counts: one of the two middle lanes, alternating per wave). The old multi-lane dispatch (`waveCursor` / `spread`) is gone. The single pipe carries the old combined rate (`funnelBoost` x2 on 3+ lanes; the pour rate is no longer divided by lane count).
+- **Spill (lateral overflow):** a red whose fall speed drops below 25% of normal for 0.22s (blocked by a barricade or the mob below) checks the space beside it. If the adjacent lane has room at its height it hops over the divider and resumes falling; if both sides are full it retries after 0.12s; 0.6s cooldown per mob stops ping-pong. A backed-up centre lane now pours outward into the other lanes and chains across the board.
+- **Barricades:** the first barricade always lands in the centre lane (3+ lanes); no two barricades share a height band (54px stagger, so no flat row across the lanes); the generator never plugs every lane, so at least one stays open for the spill.
+- Headless check (cannon invincible, not firing, L6/L12/L22): 100% of spawns in the centre lane(s); 570-920 spills per 40s; the piles fill the outer lanes (e.g. L6 lane counts 111/161/26 at 12s). No page errors. `__mob.get().spills` exposes the counter in `#debug`.
+- Balance note: base HP / TTK constants were tuned for the old spread dispatch and are untouched; expect a rebalance pass.
+
 ### Phase 15 - soft collisions and the L99 physics sandbox
 - **Soft collisions:** the rigid separation (90% of an overlap per pass) is replaced by over-relaxed "soft resolving": ~20% of a light overlap per frame (3 passes of RED_SOFT/3), ramping up only for deep overlaps (> 55% of a body) so a pile compresses and flows like mud but cannot collapse into a blob. Sideways velocity also bleeds off faster (viscous).
 - **Spawn jitter:** every emitted red gets +/-5px X and Y jitter, and spawns at its terminal fall speed so a 30/s stream is spaced ~6px instead of stacking on one pixel (the "shotgun blast").

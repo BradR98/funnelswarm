@@ -119,3 +119,4 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done. Suggested model: **Sonnet** =
 | P18-1 | HP curve x1/3, L1 base = 250 | [x] | Pro |
 | P18-2 | Tilt locked and merged | [x] | Pro |
 | P18-3 | Player-facing gameplay guide (how to play, gates, barricades, doors, power-ups, tips; in-game or docs page) | [ ] | Sonnet |
+- [ ] Player Gameplay Guide: how to play, gates, barricades, doors, power-ups, tips.
