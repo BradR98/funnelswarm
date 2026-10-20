@@ -138,7 +138,8 @@
   // ---------- The Bestiary: red mob dictionary ----------
   //   speed / radius are multipliers of the base red; hp in blue-damage points
   var RED_SPEED_BASE = 122;       // px/s downward (red); scaled per tier. Funnel tuning: -35% (was 187.5)
-  var RED_SPEED_CAP = 182;        // (was 280, scaled -35% with the base speed) hard cap on any red's descent speed: late game scales density and shields, never speed
+  var RED_SPEED_CAP = 260;        // hard cap (raised from 182 so the per-level speed ramp has headroom; was 280 originally)
+  var RED_SPEED_PER_LEVEL = 6;    // funnel tuning: +6 px/s of descent per level on top of the slowed base on any red's descent speed: late game scales density and shields, never speed
   var RedMobTypes = {
     Basic:    { id: 0, speed: 1.0, radius: 1.0, hp: 1, color: '#ff4d5e', wound: '#ff9a3c' },
     Tank:     { id: 1, speed: 0.5, radius: 1.5, hp: 3, color: '#8a1020', wound: '#c8404f' },
@@ -519,11 +520,11 @@
   var rcr = new Float32Array(MAX_RED);     // lateral wall overshoot accumulated this step (the crush push)
   var rcd = new Float32Array(MAX_RED);     // per-mob door-hit cooldown
   var rside = new Int8Array(MAX_RED);
-  var SPILL_PRESSURE = 3, DOOR_PRESSURE_K = 1.0, DOOR_PRESSURE_CAP = 20, STACK_DY = 4, doorAcc = new Float32Array(MAX_DOORS), pressureDmg = 0;   // door-busting: >= 3 stalled mobs stacked on a door grind its HP counter at K HP/s per mob (capped)
+  var SPILL_PRESSURE = 3, DOOR_PRESSURE_K = 1.0, DOOR_PRESSURE_CAP = 25, SURGE_AT = 5, SURGE_EXP = 1.5, STACK_DY = 4, doorAcc = new Float32Array(MAX_DOORS), pressureDmg = 0;   // door-busting: >= 3 stalled mobs stacked on a door grind its HP counter at K HP/s per mob (capped)
   var rdead = new Uint8Array(MAX_RED);
   var rtype = new Uint8Array(MAX_RED);     // Bestiary type id
   var rmax = new Uint16Array(MAX_RED);     // spawn HP (after the level multiplier): wound colouring compares against this
-  var redHpMul = 1, RED_HP_CAP = 60000;    // L5+: red HP x 1.5^(level-5), compounding
+  var redHpMul = 1, RED_HP_CAP = 60000, RED_HP_GROWTH = 1.25;    // L5+: red HP x 1.25^(level-5), compounding (1.5 -> 1.15 -> 1.25 while tuning)
   var rhp = new Uint16Array(MAX_RED);       // red shield: RED_HP blues to destroy one red
   var redCount = 0;
   function spawnRed(x, y, type) {
@@ -753,8 +754,8 @@
     baseMaxHP = L.baseHP; baseHP = baseMaxHP; baseHit = L.baseHit || 1;
     bossActive = false; bossMaxHP = L.bossHP; bossHP = L.bossHP; bossHeat = 0;
     cannonHP = CANNON_MAX_HP;
-    redHpMul = (!sandbox && level >= 5) ? Math.pow(1.5, level - 5) : 1;   // difficulty buff: x1.5 per level from L5
-    redInterval = L.redInterval / SPAWN_DENSITY; waveMin = L.waveMin; waveMax = L.waveMax; redSpeed = RED_SPEED_BASE * L.redSpeedMul; mixTank = L.mixTank; mixSprinter = L.mixSprinter;
+    redHpMul = (!sandbox && level >= 5) ? Math.pow(RED_HP_GROWTH, level - 5) : 1;   // difficulty buff: compounding per level from L5
+    redInterval = L.redInterval / SPAWN_DENSITY; waveMin = L.waveMin; waveMax = L.waveMax; redSpeed = RED_SPEED_BASE * L.redSpeedMul + (sandbox ? 0 : level * RED_SPEED_PER_LEVEL); mixTank = L.mixTank; mixSprinter = L.mixSprinter;
     bossSpeed = BOSS_STRAFE * L.redSpeedMul; bossDir = 1; bossX = (AX0 + AX1) / 2; bossY = BASE_Y + BOSS_H / 2 + 20;
     cannonX = targetX = (AX0 + AX1) / 2;
     bossWave = Math.max(3, Math.min(12, Math.round(L.waveMin * 0.35 * BOSS_WAVE_K))); bossInterval = Math.max(8, 12 - L.tier * 0.2) * BOSS_INT_K;   // smaller waves, slower cadence than any level
@@ -958,6 +959,26 @@
   // spill happens ONLY when that counter hits 0 and the door breaches (breachDoor kicks the pressurised stack through the gap).
   function doorPressure(dt) {
     if (!doorCount || !redCount) return;
+    var laneN = [0, 0, 0, 0], lj;                       // fluid leveling: live reds per lane (stack heights)
+    for (lj = 0; lj < redCount; lj++) if (!rdead[lj]) laneN[colOf(rx[lj])]++;
+    // Fluid leveling: a stalled red beside a breached door drifts through it. With a gap on BOTH sides it goes toward the emptier
+    // lane (probability tilts with the stack-height difference; equal lanes = a fair coin), so a breach never favours left over right.
+    for (lj = 0; lj < redCount; lj++) {
+      if (rdead[lj]) continue;
+      var lsp = redSpeed * RT_SPEED[rtype[lj]]; if (lsp > RED_SPEED_CAP) lsp = RED_SPEED_CAP;
+      if (rvy[lj] > 0.35 * lsp) continue;
+      var lc = colOf(rx[lj]), ly = ry[lj], oL = false, oR = false, lk;
+      for (lk = 0; lk < doorCount; lk++) {
+        if (!doorOpen[lk] || ly < doorY0[lk] - 8 || ly > doorY1[lk] + 8) continue;
+        if (doorDiv[lk] === lc) oR = true; else if (doorDiv[lk] === lc - 1) oL = true;
+      }
+      if (!oL && !oR) continue;
+      var ldir;
+      if (oL && oR) { var la = laneN[lc - 1], lb = laneN[lc + 1]; ldir = Math.random() < 0.5 + 0.5 * (la - lb) / (la + lb + 1) ? 1 : -1; }
+      else ldir = oR ? 1 : -1;
+      rkx[lj] += ldir * BREACH_V * 3 * dt;
+      if (rkx[lj] > BREACH_V * 0.6) rkx[lj] = BREACH_V * 0.6; else if (rkx[lj] < -BREACH_V * 0.6) rkx[lj] = -BREACH_V * 0.6;
+    }
     for (var k = 0; k < doorCount; k++) {
       if (doorOpen[k]) { doorAcc[k] = 0; continue; }
       var d = doorDiv[k], wx = (colX1[d] + colX0[d + 1]) * 0.5, nl = 0, nr = 0, i;
@@ -972,7 +993,11 @@
       }
       var n = nl > nr ? nl : nr;
       if (n < SPILL_PRESSURE) { doorAcc[k] = 0; continue; }
-      doorAcc[k] += dt * DOOR_PRESSURE_K * (n > DOOR_PRESSURE_CAP ? DOOR_PRESSURE_CAP : n);
+      var nn = n > DOOR_PRESSURE_CAP ? DOOR_PRESSURE_CAP : n;
+      var dps = nn >= SURGE_AT ? Math.pow(nn, SURGE_EXP) : nn * DOOR_PRESSURE_K;      // stack surge: >= 5 stacked grinds at n^1.5 HP/s (25 mobs ~ 125/s)
+      var srcL = nl >= nr ? d : d + 1, dstL = nl >= nr ? d + 1 : d;                   // lane pressing on the door -> lane behind it
+      var lvl = (laneN[srcL] + 1) / (laneN[dstL] + 1); lvl = lvl < 0.25 ? 0.25 : (lvl > 2 ? 2 : lvl);   // the emptier neighbour breaks first
+      doorAcc[k] += dt * dps * lvl * (0.8 + 0.4 * Math.random());                     // random tie-break so mirrored doors never favour one side
       if (doorAcc[k] >= 1) {
         var u = doorAcc[k] | 0; doorAcc[k] -= u; pressureDmg += u;
         doorHP[k] -= u; doorFlash[k] = 1; sfxHit();
@@ -1272,7 +1297,13 @@
           if (terrainCount && terrainResolve(qx2, qy2, rr0)) { qx2 = pX; qy2 = pY; }   // no sliding: a mob on a barricade simply stops
           var qc = colOf(qx2), cl0 = colX0[qc] + rr0, cl1 = colX1[qc] - rr0;
           for (k = 0; k < doorCount; k++) {      // a breached door is a gap that both neighbouring lanes can flow through
-            if (doorOpen[k] && (qc === doorDiv[k] || qc === doorDiv[k] + 1) && qy2 >= doorY0[k] && qy2 <= doorY1[k]) { cl0 = colX0[doorDiv[k]] + rr0; cl1 = colX1[doorDiv[k] + 1] - rr0; break; }
+            // Directional-bias fix: take the UNION of every open gap this lane touches. The old `break` after the first match made
+            // the lowest-index (left) door win, so a lane with gaps on both sides could only ever flow left.
+            if (doorOpen[k] && (qc === doorDiv[k] || qc === doorDiv[k] + 1) && qy2 >= doorY0[k] && qy2 <= doorY1[k]) {
+              var gl0 = colX0[doorDiv[k]] + rr0, gl1 = colX1[doorDiv[k] + 1] - rr0;
+              if (gl0 < cl0) cl0 = gl0;
+              if (gl1 > cl1) cl1 = gl1;
+            }
           }
           if (qx2 < cl0) { rcr[i] += cl0 - qx2; rside[i] = -1; qx2 = cl0; }
           else if (qx2 > cl1) { rcr[i] += qx2 - cl1; rside[i] = 1; qx2 = cl1; }

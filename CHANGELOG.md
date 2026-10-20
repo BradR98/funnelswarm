@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Funnel: flow, flatten, lethality (branch `feature/funnel-logic`)
+- **Directional bias fixed (fluid leveling):** root cause was the lane clamp in the red solver: with open gaps on both sides of a lane it did `break` after the first matching door, so the lowest-index (left) door always won and a funnel lane could only ever flow left. It now takes the union of every open gap the lane touches. On top of that, stalled reds beside a breached door drift through it; with gaps on both sides they pick the emptier lane (probability tilts with the stack-height difference, equal lanes = fair coin), and door grind damage is weighted by the same lane-height ratio (0.25x-2x, +/-20% random tie-break) so the emptier neighbour breaks first. Headless L6 lane counts went from 335/296/0 (left-only) to ~111/190/138.
+- **HP curve:** the 1.5 growth was first flattened to 1.15 and then, per the lethality blueprint, set to the final `RED_HP_GROWTH = 1.25` (red HP = `RT_HP x 1.25^(level-5)` from L5, cap 60000). L6/L9/L12 sampled max red HP: 4 / 7 / 14.
+- **Speed scaling:** descent is now `RED_SPEED_BASE (122) x tier multiplier + level x 6` px/s (sandbox exempt), so L12 closes ~40px/s faster than L5. `RED_SPEED_CAP` raised 182 -> 260 so the ramp has headroom.
+- **Stack surge:** door grind damage is `n` HP/s below 5 stacked reds and `n^1.5` HP/s at 5+, with the stack capped at 25 (25 reds = 125 HP/s). A full jam shatters a 125-250 HP door in roughly 1-2s (L6 doors broke ~1.6s after the jam formed, L12 ~3.3s) and floods the outer lanes.
+- Balance note: base HP / TTK still untuned for the new speed, HP and density.
+
 ### Funnel: door pressure, HP and density (branch `feature/funnel-logic`)
 - **Spill now requires a breach (pressure = damage):** the instant lane-hopping is removed (`trySpill` / `pressureAbove` / burst code deleted). `doorPressure(dt)` finds stalled reds (falling at < 35% of speed) stacked against a closed door; once 3+ are jammed it subtracts `1 HP/s per stacked mob` (capped at 20 mobs) from that door's HP counter, so the number drawn on the door counts down with the pile. At 0 the existing `breachDoor` fires and the pressurised stack is kicked through the gap: the only lateral spill left. Crush-angle lateral damage still applies as before.
 - **Doors on every divider** (removed the 20% skip), so any lane's jam always has a counter to grind. Funnel lane is now fixed (`colN >> 1`: middle lane on odd boards, just right of centre on even), which is also where the first barricade lands, so the jam forms over a door.
