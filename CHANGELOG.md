@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Funnel: door pressure, HP and density (branch `feature/funnel-logic`)
+- **Spill now requires a breach (pressure = damage):** the instant lane-hopping is removed (`trySpill` / `pressureAbove` / burst code deleted). `doorPressure(dt)` finds stalled reds (falling at < 35% of speed) stacked against a closed door; once 3+ are jammed it subtracts `1 HP/s per stacked mob` (capped at 20 mobs) from that door's HP counter, so the number drawn on the door counts down with the pile. At 0 the existing `breachDoor` fires and the pressurised stack is kicked through the gap: the only lateral spill left. Crush-angle lateral damage still applies as before.
+- **Doors on every divider** (removed the 20% skip), so any lane's jam always has a counter to grind. Funnel lane is now fixed (`colN >> 1`: middle lane on odd boards, just right of centre on even), which is also where the first barricade lands, so the jam forms over a door.
+- **Mob HP scaling:** from L5, red HP = `RT_HP x 1.5^(level-5)` (L6 x1.5, L9 x5, L12 x17, capped at 60000; L99 sandbox exempt). `rhp` widened to `Uint16`; new `rmax` per mob keeps wound colouring correct. Boss HP unchanged.
+- **Spawn density +50%** (`SPAWN_DENSITY = 1.5`): wave interval / 1.5, pipe rate 28 -> 42/s, threat rate 14 -> 21/s, endless-pour rate x1.5.
+- Headless check (cannon invincible, no fire): 100% spawns in the funnel lane; doors open after 4-8s of pile pressure (L6 doors 126/128 HP, L12 140/134/145), then the pile pours into the outer lanes; max red HP by level 6/9/12 = 5/15/51; no page errors. `__mob.get()` reports `pressureDmg`.
+- Balance warning: the x1.5 compounding makes the x2 gun inadequate by ~L9 as intended, but by L15+ reds carry 100+ HP; base HP / TTK are not retuned.
+
 ### Funnel tuning: speed and pressure (branch `feature/funnel-logic`)
 - **Slower descent:** `RED_SPEED_BASE` 187.5 -> 122 px/s and `RED_SPEED_CAP` 280 -> 182 (both -35%), so the player has time to carve the centre funnel before the stream reaches the cannon line. `PIPE_RATE` is unchanged, so the slower stream is denser.
 - **Fewer barricades:** count per level is now `0` on L1-2, then `1 + floor((n-3)/8)` capped at 6 (was `n-1` on L1-2, then `2 + floor((n-3)/4)` capped at 12), i.e. roughly half or fewer at every level. Minimum height gap between any two barricades raised 54 -> 90px. The lane dividers and pressure doors are now the main friction. Blue-barricade threat streams scale down with the count.

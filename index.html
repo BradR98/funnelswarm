@@ -179,10 +179,11 @@
   var POOL_RATE_CAP = 250;                // blue hits/s the 1500-mob pool can sustain (lifetime ~1.8s, with headroom)
   var TIER_SIZE = 5;
   var TERRAIN_EFF = 0.93;                 // throughput kept per terrain piece (measured)
-  var THREAT_K = 1.0, THREAT_MIN = 8, THREAT_MAX = 24, THREAT_DELAY = 10, THREAT_RATE = 14;   // threat budget: red wave size = THREAT_K x the blue barricade's hits
+  var SPAWN_DENSITY = 1.5;                // funnel tuning: +50% spawn frequency (wave interval / 1.5; pipe, threat and pour rates x1.5)
+  var THREAT_K = 1.0, THREAT_MIN = 8, THREAT_MAX = 24, THREAT_DELAY = 10, THREAT_RATE = 14 * SPAWN_DENSITY;   // threat budget: red wave size = THREAT_K x the blue barricade's hits
   var MAX_TERRAIN = 12, SLIDE_MIN = 70, RED_SLIDE = 90;   // min tangential slide speed so mobs never stall on a flat face
   var SPAWN_JITTER = 5, SANDBOX_LEVEL = 99, SANDBOX_RATE = 30, SANDBOX_W = 320;   // Phase 15 physics sandbox (L99)
-  var PIPE_RATE = 28;                     // reds/s leaving the pipe (spacing ~ 1 body at base speed)
+  var PIPE_RATE = 28 * SPAWN_DENSITY;                     // reds/s leaving the pipe (spacing ~ 1 body at base speed)
   var CRATE_R = 16 * ES, CRATE_HP = 30, CRATE_SPEED = 16, CRATE_MIN = 15, CRATE_MAX = 20;   // supply crate
   var PILL_MAX = 4, PILL_SPEED = 100, POWER_TIME = 8, PILL_R = 10 * ES;
   var BOSS_WAVE_K = 0.4, BOSS_INT_K = 2;
@@ -359,7 +360,6 @@
       var perm = [0, 1, 2].slice(0, nc - 1), pj, pt, dHP = Math.min(250, 100 + (tier - 1) * 15);
       for (i = perm.length - 1; i > 0; i--) { pj = (rnd() * (i + 1)) | 0; pt = perm[i]; perm[i] = perm[pj]; perm[pj] = pt; }
       for (i = 0; i < nc - 1; i++) {
-        if (i > 0 && rnd() > 0.8) continue;
         var dy1 = 0;
         for (j = 0; j < L.terrain.length; j++) if ((L.barrCol[j] === i || L.barrCol[j] === i + 1) && L.terrain[j][6] !== 255) dy1 = Math.max(dy1, L.terrain[j][1] + 6);
         if (!dy1) dy1 = 200 + perm[i] * 60 + rnd() * 20;
@@ -519,24 +519,24 @@
   var rcr = new Float32Array(MAX_RED);     // lateral wall overshoot accumulated this step (the crush push)
   var rcd = new Float32Array(MAX_RED);     // per-mob door-hit cooldown
   var rside = new Int8Array(MAX_RED);
-  var rstall = new Float32Array(MAX_RED);  // seconds this mob has been (nearly) stopped: the funnel 'spill' trigger
-  var rcool = new Float32Array(MAX_RED);   // per-mob spill cooldown (no ping-pong between lanes)
-  var SPILL_STALL = 0.25, SPILL_DELAY = 0.22, SPILL_CD = 0.6, SPILL_PRESSURE = 3, spillCount = 0, burstCount = 0;   // stall = vy under 25% of its fall speed; spillCount is a debug/test counter
+  var SPILL_PRESSURE = 3, DOOR_PRESSURE_K = 1.0, DOOR_PRESSURE_CAP = 20, STACK_DY = 4, doorAcc = new Float32Array(MAX_DOORS), pressureDmg = 0;   // door-busting: >= 3 stalled mobs stacked on a door grind its HP counter at K HP/s per mob (capped)
   var rdead = new Uint8Array(MAX_RED);
   var rtype = new Uint8Array(MAX_RED);     // Bestiary type id
-  var rhp = new Uint8Array(MAX_RED);       // red shield: RED_HP blues to destroy one red
+  var rmax = new Uint16Array(MAX_RED);     // spawn HP (after the level multiplier): wound colouring compares against this
+  var redHpMul = 1, RED_HP_CAP = 60000;    // L5+: red HP x 1.5^(level-5), compounding
+  var rhp = new Uint16Array(MAX_RED);       // red shield: RED_HP blues to destroy one red
   var redCount = 0;
   function spawnRed(x, y, type) {
     type = type | 0;
     if (redCount >= MAX_RED || y + RT_RAD[type] > TRACK_Y) return false;
     var i = redCount++;
-    rx[i] = x; ry[i] = y; rvx[i] = 0; rvy[i] = redSpeed * RT_SPEED[type] > RED_SPEED_CAP ? RED_SPEED_CAP : redSpeed * RT_SPEED[type]; rkx[i] = 0; rky[i] = 0; rcr[i] = 0; rcd[i] = 0; rside[i] = 0; rstall[i] = 0; rcool[i] = 0; rdead[i] = 0; rhp[i] = RT_HP[type]; rtype[i] = type;
+    rx[i] = x; ry[i] = y; rvx[i] = 0; rvy[i] = redSpeed * RT_SPEED[type] > RED_SPEED_CAP ? RED_SPEED_CAP : redSpeed * RT_SPEED[type]; rkx[i] = 0; rky[i] = 0; rcr[i] = 0; rcd[i] = 0; rside[i] = 0; rdead[i] = 0; rtype[i] = type; rhp[i] = rmax[i] = Math.min(RED_HP_CAP, Math.round(RT_HP[type] * redHpMul));
     return true;
   }
 
   function copyRed(w, i) {
-    rx[w] = rx[i]; ry[w] = ry[i]; rvx[w] = rvx[i]; rvy[w] = rvy[i]; rhp[w] = rhp[i]; rtype[w] = rtype[i]; rkx[w] = rkx[i]; rky[w] = rky[i];
-    rcr[w] = rcr[i]; rcd[w] = rcd[i]; rside[w] = rside[i]; rstall[w] = rstall[i]; rcool[w] = rcool[i];
+    rx[w] = rx[i]; ry[w] = ry[i]; rvx[w] = rvx[i]; rvy[w] = rvy[i]; rhp[w] = rhp[i]; rmax[w] = rmax[i]; rtype[w] = rtype[i]; rkx[w] = rkx[i]; rky[w] = rky[i];
+    rcr[w] = rcr[i]; rcd[w] = rcd[i]; rside[w] = rside[i];
   }
 
   // ---------- Spatial grid for blue-vs-red (linked lists in typed arrays, zero allocation) ----------
@@ -753,7 +753,8 @@
     baseMaxHP = L.baseHP; baseHP = baseMaxHP; baseHit = L.baseHit || 1;
     bossActive = false; bossMaxHP = L.bossHP; bossHP = L.bossHP; bossHeat = 0;
     cannonHP = CANNON_MAX_HP;
-    redInterval = L.redInterval; waveMin = L.waveMin; waveMax = L.waveMax; redSpeed = RED_SPEED_BASE * L.redSpeedMul; mixTank = L.mixTank; mixSprinter = L.mixSprinter;
+    redHpMul = (!sandbox && level >= 5) ? Math.pow(1.5, level - 5) : 1;   // difficulty buff: x1.5 per level from L5
+    redInterval = L.redInterval / SPAWN_DENSITY; waveMin = L.waveMin; waveMax = L.waveMax; redSpeed = RED_SPEED_BASE * L.redSpeedMul; mixTank = L.mixTank; mixSprinter = L.mixSprinter;
     bossSpeed = BOSS_STRAFE * L.redSpeedMul; bossDir = 1; bossX = (AX0 + AX1) / 2; bossY = BASE_Y + BOSS_H / 2 + 20;
     cannonX = targetX = (AX0 + AX1) / 2;
     bossWave = Math.max(3, Math.min(12, Math.round(L.waveMin * 0.35 * BOSS_WAVE_K))); bossInterval = Math.max(8, 12 - L.tier * 0.2) * BOSS_INT_K;   // smaller waves, slower cadence than any level
@@ -763,7 +764,7 @@
     waveQueue = 0; waveCursor = 0; for (var wc = 0; wc < MAX_COLS; wc++) { wq[wc] = 0; pa[wc] = 0; }
     pipeRate = PIPE_RATE;
     pourInf = !!L.pour;
-    if (L.pour) { pipeRate = L.pourRate / (1 + POUR_COL_EASE * (L.cols - 1)); /* one cannon guards one lane at a time: wider boards pour a bit less per lane */ redTimer = 1e9; queueWave(L.pour); }   // Phase 16: one sustained pour, no further random waves
+    if (L.pour) { pipeRate = L.pourRate * SPAWN_DENSITY / (1 + POUR_COL_EASE * (L.cols - 1)); /* one cannon guards one lane at a time: wider boards pour a bit less per lane */ redTimer = 1e9; queueWave(L.pour); }   // Phase 16: one sustained pour, no further random waves
     threatClock = 0;
     for (var tc2 = 0; tc2 < MAX_COLS; tc2++) { tq[tc2] = 0; ta[tc2] = 0; }
     if (threatsOn) { var tfc = funnelCol(); for (var th = 0; th < L.threats.length; th++) tq[tfc] += L.threats[th][1]; }   // funnel: threat budgets also leave the centre lane
@@ -847,13 +848,7 @@
   // Red waves are queued and released as a concentrated stream from one pipe at the top (or from the boss hull).
   // FUNNEL: every red enters the board from ONE column, the centre lane (odd lane counts: the middle lane; even counts:
   // one of the two middle lanes, alternating per call). The rest of the board fills only by the overflow 'spill' below.
-  var funnelFlip = 0;
-  function funnelCol() {
-    if (colN <= 1) return 0;
-    if (colN & 1) return colN >> 1;
-    funnelFlip ^= 1;
-    return (colN >> 1) - funnelFlip;
-  }
+  function funnelCol() { return colN >> 1; }                      // odd counts: the middle lane; even counts: the lane just right of centre (fixed, matches the first barricade)
   var funnelBoost = 1;                                           // the single pipe carries what the old multi-lane dispatch spread over several
   function queueWave(fixedN) {
     var n = fixedN || (waveMin + ((Math.random() * (waveMax - waveMin + 1)) | 0)), j;
@@ -917,58 +912,6 @@
       c = gy * RG_COLS + gx; rgNext[i] = rgHead[c]; rgHead[c] = i;
     }
   }
-  // Spill: a red that has stalled (blocked by a barricade or by the mob below it) looks at the space beside it. If the lane next
-  // door has room at its height it hops over the divider and resumes falling there, so a backed-up centre lane pours outward.
-  function spillRoom(x, y, r, self) {                           // overlap count at (x, y): 0 = free; also rejects barricade interiors
-    if (terrainCount && terrainResolve(x, y, r)) return 99;
-    var cols = RG_COLS, rows = RG_ROWS, cx = (x / 24) | 0, cy = (y / 24) | 0, n = 0;
-    cx = cx < 0 ? 0 : (cx >= cols ? cols - 1 : cx); cy = cy < 0 ? 0 : (cy >= rows ? rows - 1 : cy);
-    for (var yy = (cy > 0 ? cy - 1 : 0); yy <= (cy < rows - 1 ? cy + 1 : rows - 1); yy++) {
-      for (var xx = (cx > 0 ? cx - 1 : 0); xx <= (cx < cols - 1 ? cx + 1 : cols - 1); xx++) {
-        for (var j = rgHead[yy * cols + xx]; j !== -1; j = rgNext[j]) {
-          if (j === self || rdead[j]) continue;
-          var dx = rx[j] - x, dy = ry[j] - y, rr = r + RT_RAD[rtype[j]];
-          if (dx * dx + dy * dy < rr * rr) n++;
-        }
-      }
-    }
-    return n;
-  }
-  // Pressure: how many live reds are stacked immediately above/behind mob i (same ~lane-local column, within ~3 bodies up the lane).
-  function pressureAbove(i) {
-    var x = rx[i], y = ry[i], r = RT_RAD[rtype[i]], cols = RG_COLS, rows = RG_ROWS, n = 0;
-    var cx = (x / 24) | 0, cy = (y / 24) | 0;
-    cx = cx < 0 ? 0 : (cx >= cols ? cols - 1 : cx); cy = cy < 0 ? 0 : (cy >= rows ? rows - 1 : cy);
-    for (var yy = (cy > 2 ? cy - 3 : 0); yy <= cy; yy++) {
-      for (var xx = (cx > 0 ? cx - 1 : 0); xx <= (cx < cols - 1 ? cx + 1 : cols - 1); xx++) {
-        for (var j = rgHead[yy * cols + xx]; j !== -1; j = rgNext[j]) {
-          if (j === i || rdead[j]) continue;
-          var dx = rx[j] - x, dy = y - ry[j];          // dy > 0: j is above (behind) i
-          if (dy > -r * 0.5 && dy < r * 6 && dx > -r * 2.2 && dx < r * 2.2) n++;
-        }
-      }
-    }
-    return n;
-  }
-  function trySpill(i) {
-    if (pressureAbove(i) < SPILL_PRESSURE) return;               // door busting: only a real traffic jam forces a breach
-    var c = colOf(rx[i]), r = RT_RAD[rtype[i]], y = ry[i], best = -1, bestN = 1e9, bestX = 0, s, tc, tx, free;
-    for (s = -1; s <= 1; s += 2) {
-      tc = c + s; if (tc < 0 || tc >= colN) continue;
-      tx = s > 0 ? colX0[tc] + r + 2 + Math.random() * 10 : colX1[tc] - r - 2 - Math.random() * 10;   // just over the shared divider
-      free = spillRoom(tx, y, r, i);
-      if (free < bestN || (free === bestN && Math.random() < 0.5)) { bestN = free; best = tc; bestX = tx; }
-    }
-    if (best < 0 || bestN > 0) { rcool[i] = 0.12; return; }       // no room either side: stay put, look again shortly
-    rx[i] = bestX; rpx[i] = bestX; rvx[i] = 0; rkx[i] = 0; rvy[i] = redSpeed * 0.5;
-    rstall[i] = 0; rcool[i] = SPILL_CD; spillCount++;
-    // Burst: the breach relieves the jam, so the stalled mobs packed right behind it surge through on the next frames
-    for (var q = 0; q < redCount; q++) {
-      if (q === i || rdead[q] || rstall[q] <= 0) continue;
-      var by = ry[q] - y;
-      if (by < -4 && by > -70 && Math.abs(rx[q] - rx[i]) < 80 && colOf(rx[q]) === c) { rstall[q] = SPILL_DELAY; rcool[q] = 0; burstCount++; }
-    }
-  }
   function separateReds() {
     var cols = RG_COLS, rows = RG_ROWS, i;
     for (i = 0; i < redCount; i++) {
@@ -1009,6 +952,32 @@
       if (ry[j] < doorY0[k] - 40 || ry[j] > doorY1[k] + 40) continue;
       if (colOf(rx[j]) !== from) continue;
       rkx[j] = side * BREACH_V; rvx[j] = side * BREACH_V * 0.5;
+    }
+  }
+  // Door pressure: a stack of >= SPILL_PRESSURE stalled reds jammed against a closed door grinds its HP counter down; the lateral
+  // spill happens ONLY when that counter hits 0 and the door breaches (breachDoor kicks the pressurised stack through the gap).
+  function doorPressure(dt) {
+    if (!doorCount || !redCount) return;
+    for (var k = 0; k < doorCount; k++) {
+      if (doorOpen[k]) { doorAcc[k] = 0; continue; }
+      var d = doorDiv[k], wx = (colX1[d] + colX0[d + 1]) * 0.5, nl = 0, nr = 0, i;
+      var yTop = doorY0[k] - RED_R * STACK_DY, yBot = doorY1[k] + RED_R;
+      for (i = 0; i < redCount; i++) {
+        if (rdead[i]) continue;
+        var y = ry[i]; if (y < yTop || y > yBot) continue;
+        var dx = rx[i] - wx, ad = dx < 0 ? -dx : dx; if (ad > (colX1[d] - colX0[d]) * 0.5 + 6) continue;   // stacked in the lane beside the door
+        var spd = redSpeed * RT_SPEED[rtype[i]]; if (spd > RED_SPEED_CAP) spd = RED_SPEED_CAP;
+        if (rvy[i] > 0.35 * spd) continue;                  // still flowing: not part of the jam
+        if (dx < 0) nl++; else nr++;
+      }
+      var n = nl > nr ? nl : nr;
+      if (n < SPILL_PRESSURE) { doorAcc[k] = 0; continue; }
+      doorAcc[k] += dt * DOOR_PRESSURE_K * (n > DOOR_PRESSURE_CAP ? DOOR_PRESSURE_CAP : n);
+      if (doorAcc[k] >= 1) {
+        var u = doorAcc[k] | 0; doorAcc[k] -= u; pressureDmg += u;
+        doorHP[k] -= u; doorFlash[k] = 1; sfxHit();
+        if (doorHP[k] <= 0) breachDoor(k, nl >= nr ? 1 : -1);
+      }
     }
   }
   function hitDoor(k, side) { doorHP[k]--; doorFlash[k] = 1; sfxHit(); if (doorHP[k] <= 0) breachDoor(k, side); }
@@ -1324,16 +1293,10 @@
         vxn = vxn > 140 ? 140 : (vxn < -140 ? -140 : vxn);
         rvx[i] = vxn * dfr;
         rvy[i] = vyn < -40 ? -40 : vyn;
-        if (colN > 1 && !rdead[i]) {                           // funnel spill: stalled mobs evaluate left / right
-          if (rcool[i] > 0) rcool[i] -= dt;
-          var sspd = redSpeed * RT_SPEED[rtype[i]]; if (sspd > RED_SPEED_CAP) sspd = RED_SPEED_CAP;
-          if (vyn < SPILL_STALL * sspd && ry[i] > BASE_BOTTOM + 40 && ry[i] < TRACK_Y - 30) {
-            rstall[i] += dt;
-            if (rstall[i] >= SPILL_DELAY && rcool[i] <= 0) trySpill(i);
-          } else rstall[i] = 0;
-        }
       }
     }
+
+    doorPressure(dt);
 
     // Boss hovers at the base line, strafing left and right like a moving base
     if (bossActive) {
@@ -1590,7 +1553,7 @@
         ctx.fillStyle = wd ? rt.wound : rt.color;
         ctx.beginPath();
         for (i = 0; i < redCount; i++) {
-          if (rtype[i] !== ty || (rhp[i] < RT_HP[ty]) !== (wd === 1)) continue;
+          if (rtype[i] !== ty || (rhp[i] < rmax[i]) !== (wd === 1)) continue;
           ctx.moveTo(rx[i] + rr2, ry[i]);
           ctx.arc(rx[i], ry[i], rr2, 0, 6.2832);
         }
@@ -1755,7 +1718,7 @@
                  cols: colN, colX0: Array.prototype.slice.call(colX0, 0, colN), colX1: Array.prototype.slice.call(colX1, 0, colN), AX0: AX0, AX1: AX1,
                  doorCount: doorCount, doorHP: Array.prototype.slice.call(doorHP, 0, doorCount), doorMax: Array.prototype.slice.call(doorMax, 0, doorCount), doorDiv: Array.prototype.slice.call(doorDiv, 0, doorCount),
                  doorY0: Array.prototype.slice.call(doorY0, 0, doorCount), doorY1: Array.prototype.slice.call(doorY1, 0, doorCount), doorOpen: Array.prototype.slice.call(doorOpen, 0, doorCount),
-                 spills: spillCount, bursts: burstCount, zoneCount: zoneCount, zoneCol: Array.prototype.slice.call(zoneCol, 0, zoneCount), zoneY: Array.prototype.slice.call(zoneY, 0, zoneCount), zoneT: Array.prototype.slice.call(zoneT, 0, zoneCount),
+                 pressureDmg: pressureDmg, zoneCount: zoneCount, zoneCol: Array.prototype.slice.call(zoneCol, 0, zoneCount), zoneY: Array.prototype.slice.call(zoneY, 0, zoneCount), zoneT: Array.prototype.slice.call(zoneT, 0, zoneCount),
                  redVY: Array.prototype.slice.call(rvy, 0, redCount), redVX: Array.prototype.slice.call(rvx, 0, redCount),
                  barr: (function () { var o = []; for (var q = 0; q < terrainCount; q++) o.push({ x: tCX[q], y: tCY[q], hw: tHW[q], hh: tHH[q], type: tType[q], hits: tHits[q] }); return o; })(), crateActive: crateActive, crateX: crateX, crateY: crateY, crateHP: crateHP,
                  pillCount: pillCount, pillX: sl.call(pillX, 0, pillCount), pillY: sl.call(pillY, 0, pillCount), powerName: powerName, powerLeft: powerLeft,
