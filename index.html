@@ -137,8 +137,8 @@
 
   // ---------- The Bestiary: red mob dictionary ----------
   //   speed / radius are multipliers of the base red; hp in blue-damage points
-  var RED_SPEED_BASE = 187.5;     // px/s downward (red); scaled per tier
-  var RED_SPEED_CAP = 280;        // hard cap on any red's descent speed: late game scales density and shields, never speed
+  var RED_SPEED_BASE = 122;       // px/s downward (red); scaled per tier. Funnel tuning: -35% (was 187.5)
+  var RED_SPEED_CAP = 182;        // (was 280, scaled -35% with the base speed) hard cap on any red's descent speed: late game scales density and shields, never speed
   var RedMobTypes = {
     Basic:    { id: 0, speed: 1.0, radius: 1.0, hp: 1, color: '#ff4d5e', wound: '#ff9a3c' },
     Tank:     { id: 1, speed: 0.5, radius: 1.5, hp: 3, color: '#8a1020', wound: '#c8404f' },
@@ -325,7 +325,7 @@
     L.doors = []; L.terrainEff = 1; L.barrCol = [];
     // Phase 12: L1-2 spawn only gray blocks. Blue barricades (rewards) never share a column and each one carries a
     // Threat Budget: a dense red wave in an ADJACENT column, sized by the barricade's hit value.
-    var nbar = n <= 2 ? n - 1 : Math.min(MAX_TERRAIN, 2 + (((n - 3) / 4) | 0)), bk, blueUsed = [false, false, false, false];
+    var nbar = n <= 2 ? 0 : Math.min(Math.ceil(MAX_TERRAIN / 2), 1 + (((n - 3) / 8) | 0)), bk, blueUsed = [false, false, false, false];
     L.threats = [];
     for (bk = 0; bk < nbar; bk++) {
       var rt = rnd(), typ = n <= 2 ? 0 : (rt < 0.25 ? 0 : (rt < 0.65 ? 1 : 2)), freeC = [];
@@ -341,7 +341,7 @@
       if (yMax < yMin) continue;
       if (n <= POUR_MAX_LEVEL) yMin = Math.max(yMin, yMax - 110);   // Phase 16: Tier-1 dams sit low in the available space, so a pour never stacks into one giant burst
       var by = yMin + rnd() * (yMax - yMin), clash = false;
-      for (j = 0; j < L.terrain.length; j++) if ((L.barrCol[j] === c && Math.abs(L.terrain[j][1] - by) < 46) || Math.abs(L.terrain[j][1] - by) < 54) clash = true;   // funnel tuning: staggered heights, never a flat row across the lanes
+      for (j = 0; j < L.terrain.length; j++) if ((L.barrCol[j] === c && Math.abs(L.terrain[j][1] - by) < 46) || Math.abs(L.terrain[j][1] - by) < 90) clash = true;   // funnel tuning: staggered heights, never a flat row across the lanes
       if (clash) continue;
       var bx0 = colSpan(nc, c)[0], hits = Math.min(60, Math.round(10 + n * 0.5));
       L.terrain.push([bx0 + cw / 2, by, cw / 2, 12, 0, 1, typ, hits]);   // Phase 13: a barricade plugs its whole column (a dam)
@@ -521,7 +521,7 @@
   var rside = new Int8Array(MAX_RED);
   var rstall = new Float32Array(MAX_RED);  // seconds this mob has been (nearly) stopped: the funnel 'spill' trigger
   var rcool = new Float32Array(MAX_RED);   // per-mob spill cooldown (no ping-pong between lanes)
-  var SPILL_STALL = 0.25, SPILL_DELAY = 0.22, SPILL_CD = 0.6, spillCount = 0;   // stall = vy under 25% of its fall speed; spillCount is a debug/test counter
+  var SPILL_STALL = 0.25, SPILL_DELAY = 0.22, SPILL_CD = 0.6, SPILL_PRESSURE = 3, spillCount = 0, burstCount = 0;   // stall = vy under 25% of its fall speed; spillCount is a debug/test counter
   var rdead = new Uint8Array(MAX_RED);
   var rtype = new Uint8Array(MAX_RED);     // Bestiary type id
   var rhp = new Uint8Array(MAX_RED);       // red shield: RED_HP blues to destroy one red
@@ -934,7 +934,24 @@
     }
     return n;
   }
+  // Pressure: how many live reds are stacked immediately above/behind mob i (same ~lane-local column, within ~3 bodies up the lane).
+  function pressureAbove(i) {
+    var x = rx[i], y = ry[i], r = RT_RAD[rtype[i]], cols = RG_COLS, rows = RG_ROWS, n = 0;
+    var cx = (x / 24) | 0, cy = (y / 24) | 0;
+    cx = cx < 0 ? 0 : (cx >= cols ? cols - 1 : cx); cy = cy < 0 ? 0 : (cy >= rows ? rows - 1 : cy);
+    for (var yy = (cy > 2 ? cy - 3 : 0); yy <= cy; yy++) {
+      for (var xx = (cx > 0 ? cx - 1 : 0); xx <= (cx < cols - 1 ? cx + 1 : cols - 1); xx++) {
+        for (var j = rgHead[yy * cols + xx]; j !== -1; j = rgNext[j]) {
+          if (j === i || rdead[j]) continue;
+          var dx = rx[j] - x, dy = y - ry[j];          // dy > 0: j is above (behind) i
+          if (dy > -r * 0.5 && dy < r * 6 && dx > -r * 2.2 && dx < r * 2.2) n++;
+        }
+      }
+    }
+    return n;
+  }
   function trySpill(i) {
+    if (pressureAbove(i) < SPILL_PRESSURE) return;               // door busting: only a real traffic jam forces a breach
     var c = colOf(rx[i]), r = RT_RAD[rtype[i]], y = ry[i], best = -1, bestN = 1e9, bestX = 0, s, tc, tx, free;
     for (s = -1; s <= 1; s += 2) {
       tc = c + s; if (tc < 0 || tc >= colN) continue;
@@ -945,6 +962,12 @@
     if (best < 0 || bestN > 0) { rcool[i] = 0.12; return; }       // no room either side: stay put, look again shortly
     rx[i] = bestX; rpx[i] = bestX; rvx[i] = 0; rkx[i] = 0; rvy[i] = redSpeed * 0.5;
     rstall[i] = 0; rcool[i] = SPILL_CD; spillCount++;
+    // Burst: the breach relieves the jam, so the stalled mobs packed right behind it surge through on the next frames
+    for (var q = 0; q < redCount; q++) {
+      if (q === i || rdead[q] || rstall[q] <= 0) continue;
+      var by = ry[q] - y;
+      if (by < -4 && by > -70 && Math.abs(rx[q] - rx[i]) < 80 && colOf(rx[q]) === c) { rstall[q] = SPILL_DELAY; rcool[q] = 0; burstCount++; }
+    }
   }
   function separateReds() {
     var cols = RG_COLS, rows = RG_ROWS, i;
@@ -1732,7 +1755,7 @@
                  cols: colN, colX0: Array.prototype.slice.call(colX0, 0, colN), colX1: Array.prototype.slice.call(colX1, 0, colN), AX0: AX0, AX1: AX1,
                  doorCount: doorCount, doorHP: Array.prototype.slice.call(doorHP, 0, doorCount), doorMax: Array.prototype.slice.call(doorMax, 0, doorCount), doorDiv: Array.prototype.slice.call(doorDiv, 0, doorCount),
                  doorY0: Array.prototype.slice.call(doorY0, 0, doorCount), doorY1: Array.prototype.slice.call(doorY1, 0, doorCount), doorOpen: Array.prototype.slice.call(doorOpen, 0, doorCount),
-                 spills: spillCount, zoneCount: zoneCount, zoneCol: Array.prototype.slice.call(zoneCol, 0, zoneCount), zoneY: Array.prototype.slice.call(zoneY, 0, zoneCount), zoneT: Array.prototype.slice.call(zoneT, 0, zoneCount),
+                 spills: spillCount, bursts: burstCount, zoneCount: zoneCount, zoneCol: Array.prototype.slice.call(zoneCol, 0, zoneCount), zoneY: Array.prototype.slice.call(zoneY, 0, zoneCount), zoneT: Array.prototype.slice.call(zoneT, 0, zoneCount),
                  redVY: Array.prototype.slice.call(rvy, 0, redCount), redVX: Array.prototype.slice.call(rvx, 0, redCount),
                  barr: (function () { var o = []; for (var q = 0; q < terrainCount; q++) o.push({ x: tCX[q], y: tCY[q], hw: tHW[q], hh: tHH[q], type: tType[q], hits: tHits[q] }); return o; })(), crateActive: crateActive, crateX: crateX, crateY: crateY, crateHP: crateHP,
                  pillCount: pillCount, pillX: sl.call(pillX, 0, pillCount), pillY: sl.call(pillY, 0, pillCount), powerName: powerName, powerLeft: powerLeft,

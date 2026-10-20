@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Funnel tuning: speed and pressure (branch `feature/funnel-logic`)
+- **Slower descent:** `RED_SPEED_BASE` 187.5 -> 122 px/s and `RED_SPEED_CAP` 280 -> 182 (both -35%), so the player has time to carve the centre funnel before the stream reaches the cannon line. `PIPE_RATE` is unchanged, so the slower stream is denser.
+- **Fewer barricades:** count per level is now `0` on L1-2, then `1 + floor((n-3)/8)` capped at 6 (was `n-1` on L1-2, then `2 + floor((n-3)/4)` capped at 12), i.e. roughly half or fewer at every level. Minimum height gap between any two barricades raised 54 -> 90px. The lane dividers and pressure doors are now the main friction. Blue-barricade threat streams scale down with the count.
+- **Door-busting pressure:** a stalled red now spills only if at least `SPILL_PRESSURE = 3` reds are stacked within ~3 bodies above/behind it (`pressureAbove()`). When one breaches, the stalled mobs packed right behind it in the same lane are released on the next frames, so a jam bursts outward in a surge instead of a steady trickle. If the jam is smaller than 3 the mob waits.
+- Headless check (L6/L12/L22, invincible cannon, not firing): spawns 100% centre lane(s); 460-810 spills per 40s; outer lanes still fill in bursts; no page errors. `__mob.get()` now also reports `bursts`.
+- Balance note: base HP / TTK constants still assume the old speed and spread; a rebalance pass is still needed.
+
 ### Funnel logic (branch `feature/funnel-logic`, not yet on `main`)
 - **Single-column spawn:** every red wave, threat-budget stream and endless-pour red now leaves the base from the centre lane only (odd lane counts: the middle lane; even counts: one of the two middle lanes, alternating per wave). The old multi-lane dispatch (`waveCursor` / `spread`) is gone. The single pipe carries the old combined rate (`funnelBoost` x2 on 3+ lanes; the pour rate is no longer divided by lane count).
 - **Spill (lateral overflow):** a red whose fall speed drops below 25% of normal for 0.22s (blocked by a barricade or the mob below) checks the space beside it. If the adjacent lane has room at its height it hops over the divider and resumes falling; if both sides are full it retries after 0.12s; 0.6s cooldown per mob stops ping-pong. A backed-up centre lane now pours outward into the other lanes and chains across the board.
