@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Live (next frame):** `chuteWidth` (`applyChute` re-lays the column, barricade plugs and gate tracks), `playerDmg` (scales red HP removed per hit, probabilistic rounding), `playerBullets` (extra projectiles per trigger).
 - **On "Restart Level":** `mobDensity`, `mobSpeed`, `mobRedHP`, `gateConcurrency` and `gateXRange` (ceiling; the floor keeps the level's proportion) override the level math while the level rebuilds (`tunApply`). Gate concurrency is `min(mob-count tier cap, slider)`.
 - **Copy Settings** button: copies one-line JSON of the current level plus every TUNING value, e.g. `{"level":6,"chuteWidth":96,...}`, to the clipboard (with a textarea / prompt fallback).
-- Service worker cache: `mob-swarm-funnel-v10`.
+- **Harness fix: sliders now change the running game.** Live next frame: chuteWidth, mobDensity (interval and pipe rate rescaled), mobSpeed, mobRedHP (mobs spawned from then on), gateConcurrency, playerDmg, playerBullets. Only gateXRange needs Restart Level because gate values are baked at level build. Restart also pads the level to at least `gateConcurrency` gates (max 4, the number of gate rows) so raising the slider on a one-gate level actually adds gates. Active gates are still limited by the mob-count caps (1 / 2 / unlimited).
+- Service worker cache: `mob-swarm-funnel-v11`.
 
 ### Gate concurrency cap + mid-game density squeeze (branch `feature/funnel-logic`)
 - **Gate concurrency cap.** Gates here are sliding rows built at level start (they never "fall"), so the cap works as an activation limit. Gates start dormant (not drawn, no hit test, no motion). One more is activated per frame only while the active count is under the cap, which depends on the live blue-mob count: under 10 mobs gives 1 active gate, 10-24 gives 2, 25+ gives no extra limit. Once active a gate stays active. RNG value math is untouched. Debug: `__mob.get().gatesActive`.
