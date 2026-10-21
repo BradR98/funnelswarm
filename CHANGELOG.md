@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Floating `#debug-harness` panel** (dark, translucent, z-index 9999, collapsible, top-left over the canvas): one `<input type="range">` per variable with an adjacent live value `<span>`. The "shooter advantage + range" is a read-only `<span>` = `gateXRange - 1`. Pointer and touch events on the panel are stopped so dragging a slider never fires the cannon.
 - **Live (next frame):** `chuteWidth` (`applyChute` re-lays the column, barricade plugs and gate tracks), `playerDmg` (scales red HP removed per hit, probabilistic rounding), `playerBullets` (extra projectiles per trigger).
 - **On "Restart Level":** `mobDensity`, `mobSpeed`, `mobRedHP`, `gateConcurrency` and `gateXRange` (ceiling; the floor keeps the level's proportion) override the level math while the level rebuilds (`tunApply`). Gate concurrency is `min(mob-count tier cap, slider)`.
-- Service worker cache: `mob-swarm-funnel-v9`.
+- **Copy Settings** button: copies one-line JSON of the current level plus every TUNING value, e.g. `{"level":6,"chuteWidth":96,...}`, to the clipboard (with a textarea / prompt fallback).
+- Service worker cache: `mob-swarm-funnel-v10`.
 
 ### Gate concurrency cap + mid-game density squeeze (branch `feature/funnel-logic`)
 - **Gate concurrency cap.** Gates here are sliding rows built at level start (they never "fall"), so the cap works as an activation limit. Gates start dormant (not drawn, no hit test, no motion). One more is activated per frame only while the active count is under the cap, which depends on the live blue-mob count: under 10 mobs gives 1 active gate, 10-24 gives 2, 25+ gives no extra limit. Once active a gate stays active. RNG value math is untouched. Debug: `__mob.get().gatesActive`.

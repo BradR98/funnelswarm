@@ -782,6 +782,15 @@
     });
     var rb = document.createElement('button'); rb.textContent = 'Restart Level'; rb.style.marginTop = '4px'; rb.onclick = function () { tunApply = true; try { reset(); } finally { tunApply = false; } };
     body.appendChild(rb);
+    var cb = document.createElement('button'); cb.textContent = 'Copy Settings'; cb.style.cssText = 'margin:4px 0 0 6px';
+    cb.onclick = function () {                                   // JSON of the level + every tuning value, ready to paste back
+      var o = { level: level }; for (var k in TUNING) o[k] = Math.round(TUNING[k] * 100) / 100;
+      var txt = JSON.stringify(o);
+      function done(ok) { cb.textContent = ok ? 'Copied!' : 'Copy failed'; setTimeout(function () { cb.textContent = 'Copy Settings'; }, 1200); }
+      function fallback() { var ta = document.createElement('textarea'); ta.value = txt; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta); if (!ok) window.prompt('Copy settings:', txt); done(ok); }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(function () { done(true); }, fallback); else fallback();
+    };
+    body.appendChild(cb);
     ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'click'].forEach(function (ev) { box.addEventListener(ev, function (e) { e.stopPropagation(); }); });   // sliders must not fire the cannon or be eaten by the page's touchmove guard
     (document.getElementById('stage') || document.body).appendChild(box);
   })();
