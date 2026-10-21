@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Funnel: TTK baseline and HP flattening (branch `feature/funnel-logic`)
+- **Base HP halved:** the HQ's starting HP is now `L.baseHP x BASE_HP_SCALE (0.5)` on every non-sandbox level, so the 1x starter cannon clears the funnel with the friction the 2x gave (L1 250 -> 125; sampled L2 128, L5 875, L9 1088, L12 1109). Red mobs themselves have 1-3 HP at base so cannot be halved: this is the HQ base HP ("Level 1 Base HP"). Boss HP, `BASE_HIT` and the sandbox are untouched.
+- **HP curve flattened:** `RED_HP_GROWTH` 1.25 -> 1.10, so red HP = `RT_HP x 1.10^(level-5)` from L5 (L7 = +21% over L5, was +56%; L12 = x1.95). Density multiplier untouched.
+- **Density cap verified and one leak fixed:** `SPAWN_DENSITY` is a constant 1.5 (wave interval / 1.5, pipe, threat and pour rates x1.5), not a per-level ramp. Audit found the pipe `funnelBoost` (x2 on 3+ lane boards) was also being applied to the endless pour on L3-8, where `pipeRate` is already the whole-board rate: that made those levels ~3x (2x boost x 1.5) instead of 1.5x. The boost now applies only to non-pour waves (matching the old 2-lane dispatch) and no longer to threat streams. The per-level wave-interval / wave-size ramps from the original generator are unchanged.
+- Service worker cache renamed `mob-swarm-funnel-v1` so this build can be hosted beside production on the same GitHub Pages origin without sharing a cache.
+
 ### Funnel: flow, flatten, lethality (branch `feature/funnel-logic`)
 - **Directional bias fixed (fluid leveling):** root cause was the lane clamp in the red solver: with open gaps on both sides of a lane it did `break` after the first matching door, so the lowest-index (left) door always won and a funnel lane could only ever flow left. It now takes the union of every open gap the lane touches. On top of that, stalled reds beside a breached door drift through it; with gaps on both sides they pick the emptier lane (probability tilts with the stack-height difference, equal lanes = fair coin), and door grind damage is weighted by the same lane-height ratio (0.25x-2x, +/-20% random tie-break) so the emptier neighbour breaks first. Headless L6 lane counts went from 335/296/0 (left-only) to ~111/190/138.
 - **HP curve:** the 1.5 growth was first flattened to 1.15 and then, per the lethality blueprint, set to the final `RED_HP_GROWTH = 1.25` (red HP = `RT_HP x 1.25^(level-5)` from L5, cap 60000). L6/L9/L12 sampled max red HP: 4 / 7 / 14.

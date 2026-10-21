@@ -180,6 +180,7 @@
   var POOL_RATE_CAP = 250;                // blue hits/s the 1500-mob pool can sustain (lifetime ~1.8s, with headroom)
   var TIER_SIZE = 5;
   var TERRAIN_EFF = 0.93;                 // throughput kept per terrain piece (measured)
+  var BASE_HP_SCALE = 0.5;                // TTK baseline: the 1x starter cannon now clears the HQ as fast as the 2x did (L1 base 250 -> 125)
   var SPAWN_DENSITY = 1.5;                // funnel tuning: +50% spawn frequency (wave interval / 1.5; pipe, threat and pour rates x1.5)
   var THREAT_K = 1.0, THREAT_MIN = 8, THREAT_MAX = 24, THREAT_DELAY = 10, THREAT_RATE = 14 * SPAWN_DENSITY;   // threat budget: red wave size = THREAT_K x the blue barricade's hits
   var MAX_TERRAIN = 12, SLIDE_MIN = 70, RED_SLIDE = 90;   // min tangential slide speed so mobs never stall on a flat face
@@ -524,7 +525,7 @@
   var rdead = new Uint8Array(MAX_RED);
   var rtype = new Uint8Array(MAX_RED);     // Bestiary type id
   var rmax = new Uint16Array(MAX_RED);     // spawn HP (after the level multiplier): wound colouring compares against this
-  var redHpMul = 1, RED_HP_CAP = 60000, RED_HP_GROWTH = 1.25;    // L5+: red HP x 1.25^(level-5), compounding (1.5 -> 1.15 -> 1.25 while tuning)
+  var redHpMul = 1, RED_HP_CAP = 60000, RED_HP_GROWTH = 1.10;    // L5+: red HP x 1.10^(level-5), compounding (tuning history: 1.5 -> 1.15 -> 1.25 -> 1.10; L7 = +21% over L5)
   var rhp = new Uint16Array(MAX_RED);       // red shield: RED_HP blues to destroy one red
   var redCount = 0;
   function spawnRed(x, y, type) {
@@ -751,7 +752,7 @@
     setColumns(L.cols);
     mobCount = 0; redCount = 0;
     isBossLevel = L.isBoss;
-    baseMaxHP = L.baseHP; baseHP = baseMaxHP; baseHit = L.baseHit || 1;
+    baseMaxHP = L.sandbox ? L.baseHP : Math.max(1, Math.round(L.baseHP * BASE_HP_SCALE)); baseHP = baseMaxHP;   // TTK baseline shift: HQ base HP x0.5 baseHit = L.baseHit || 1;
     bossActive = false; bossMaxHP = L.bossHP; bossHP = L.bossHP; bossHeat = 0;
     cannonHP = CANNON_MAX_HP;
     redHpMul = (!sandbox && level >= 5) ? Math.pow(RED_HP_GROWTH, level - 5) : 1;   // difficulty buff: compounding per level from L5
@@ -869,7 +870,7 @@
     if (threatClock < THREAT_DELAY) return;                    // threat-budget reds leave the top edge of their (adjacent) column
     for (var c = 0; c < colN; c++) {
       if (tq[c] <= 0) { ta[c] = 0; continue; }
-      ta[c] += dt * THREAT_RATE * funnelBoost;
+      ta[c] += dt * THREAT_RATE;
       while (ta[c] >= 1 && tq[c] > 0) {
         var half = (colX1[c] - colX0[c]) / 2 - RED_R - 1;
         if (!emitRed(c, (colX0[c] + colX1[c]) / 2, half < 24 ? half : 24)) { ta[c] = 0; break; }
@@ -891,7 +892,7 @@
     }
     for (c = 0; c < colN; c++) {
       if (wq[c] <= 0) { pa[c] = 0; continue; }
-      pa[c] += dt * pipeRate * funnelBoost;
+      pa[c] += dt * pipeRate * (pourInf ? 1 : funnelBoost);   // pour: pipeRate is already the whole-board rate, so no extra boost (it double counted -> ~3x)
       while (pa[c] >= 1 && wq[c] > 0) {
         var half = (colX1[c] - colX0[c]) / 2 - RED_R - 1;
         if (!emitRed(c, (colX0[c] + colX1[c]) / 2, half < 24 ? half : 24)) { pa[c] = 0; break; }
