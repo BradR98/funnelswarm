@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### TTK ceiling and HP curve (branch `feature/funnel-logic`)
+- **RNG gate nerf.** New `GATE_NERF = 0.7` scales both the floor and the ceiling of every gate roll, and the guaranteed-multiplier fallback. Measured `x` ranges: L4 x1.4-x2.8, L7 x2.1-x4.2, L10 x2.8-x5.6 (was x2-x4 / x3-x6 / x4-x8). `+` gates scale the same way. Fractional values and probabilistic rounding in `applyGate` are unchanged.
+- **Steeper HP curve.** `RED_HP_GROWTH` goes from 1.10 to 1.15, so red HP = base x 1.15^(level-5) (L7 +32% over L5, L10 about 2x).
+- Service worker cache: `mob-swarm-funnel-v6`.
+
 ### Mid-game density step (branch `feature/funnel-logic`)
 - **1.5x density step at Level 4.** Spawn density is now level-gated. Levels 1-3 run at exactly 1.0x. Every level above 3 (`level > 3`) spawns 1.5x: wave interval / 1.5, and pipe and pour rates x1.5. The old global 1.5x is gone, so Levels 1-3 are now 1.0x. The sandbox is exempt.
 - Back-pressure is unchanged: `emitRed` still refuses to spawn inside a pile at the mouth, so extra volume queues instead of overlapping, and the chute packs tightly. That feeds Vertical Surge.
