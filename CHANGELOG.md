@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Mid-game density step (branch `feature/funnel-logic`)
+- **1.5x density step at Level 4.** Spawn density is now level-gated. Levels 1-3 run at exactly 1.0x. Every level above 3 (`level > 3`) spawns 1.5x: wave interval / 1.5, and pipe and pour rates x1.5. The old global 1.5x is gone, so Levels 1-3 are now 1.0x. The sandbox is exempt.
+- Back-pressure is unchanged: `emitRed` still refuses to spawn inside a pile at the mouth, so extra volume queues instead of overlapping, and the chute packs tightly. That feeds Vertical Surge.
+- Service worker cache: `mob-swarm-funnel-v5`.
+
 ### Single-chute pivot: RNG gate drops + Vertical Surge (branch `feature/funnel-logic`)
 - **Multi-lane and spill logic removed.** The board is now exactly ONE 96px vertical chute (`columnCount()` is always 1, `MAX_COLS = 1`). Deleted: lateral spill and fluid-leveling drift, door HP and door pressure (`doorPressure`, `breachDoor`, `hitDoor`, `doorAt`, crush-angle filter), lane dividers and their rendering, the funnel-lane and `funnelBoost` logic, blue barricades and their adjacent-lane threat waves, and the multi-column barricade lane picking. The constricted dead-space margins are kept and now flank the chute. Barricades are gray plugs that each block the whole pipe.
 - **Dynamic RNG gate drops.** The static pools (x2 / +2 low, x3 / +10 high) are replaced by `rollGate(kind, level)`. Each gate rolls inside a window whose floor and ceiling both rise with the level, e.g. L4 x2-x4, L7 x3-x6, L10 x4-x8. `+` gates scale the same way. Low gates favour the bottom of the window and high gates the top. Values are fractional ("messy"), e.g. x2.2 and +1.5. `applyGate` rounds probabilistically, so the average clone count equals the displayed value.

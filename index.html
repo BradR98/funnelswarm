@@ -183,7 +183,7 @@
   var BASE_HP_SCALE = 0.5;                // TTK baseline: the 1x starter cannon now clears the HQ as fast as the 2x did (L1 base 250 -> 125)
   var MOUTH_HALF = 44;                    // spawn mouth half-width cap (was 24): a wider mouth restores the throughput that back-pressure costs
   var BARR_RUNWAY = 140;                  // min free height between the spawn mouth and a barricade top
-  var SPAWN_DENSITY = 1.5;                // funnel tuning: +50% spawn frequency (wave interval / 1.5; pipe, threat and pour rates x1.5)
+  var SPAWN_DENSITY = 1.0, DENSITY_STEP = 1.5, DENSITY_STEP_LEVEL = 3, levelDensity = 1;   // density step: L1-3 run at 1.0x; every level above 3 spawns 1.5x (wave interval / 1.5; pipe and pour rates x1.5)
   var THREAT_K = 1.0, THREAT_MIN = 8, THREAT_MAX = 24, THREAT_DELAY = 10, THREAT_RATE = 14 * SPAWN_DENSITY;   // threat budget: red wave size = THREAT_K x the blue barricade's hits
   var MAX_TERRAIN = 12, SLIDE_MIN = 70, RED_SLIDE = 90;   // min tangential slide speed so mobs never stall on a flat face
   var SPAWN_JITTER = 5, SANDBOX_LEVEL = 99, SANDBOX_RATE = 30, SANDBOX_W = 320;   // Phase 15 physics sandbox (L99)
@@ -746,7 +746,8 @@
     bossActive = false; bossMaxHP = L.bossHP; bossHP = L.bossHP; bossHeat = 0;
     cannonHP = CANNON_MAX_HP;
     redHpMul = (!sandbox && level >= 5) ? Math.pow(RED_HP_GROWTH, level - 5) : 1;   // difficulty buff: compounding per level from L5
-    redInterval = L.redInterval / SPAWN_DENSITY; waveMin = L.waveMin; waveMax = L.waveMax; redSpeed = RED_SPEED_BASE * L.redSpeedMul + (sandbox ? 0 : level * RED_SPEED_PER_LEVEL); mixTank = L.mixTank; mixSprinter = L.mixSprinter;
+    levelDensity = SPAWN_DENSITY * (L.n > DENSITY_STEP_LEVEL && !L.sandbox ? DENSITY_STEP : 1);
+    redInterval = L.redInterval / levelDensity; waveMin = L.waveMin; waveMax = L.waveMax; redSpeed = RED_SPEED_BASE * L.redSpeedMul + (sandbox ? 0 : level * RED_SPEED_PER_LEVEL); mixTank = L.mixTank; mixSprinter = L.mixSprinter;
     bossSpeed = BOSS_STRAFE * L.redSpeedMul; bossDir = 1; bossX = (AX0 + AX1) / 2; bossY = BASE_Y + BOSS_H / 2 + 20;
     cannonX = targetX = (AX0 + AX1) / 2;
     bossWave = Math.max(3, Math.min(12, Math.round(L.waveMin * 0.35 * BOSS_WAVE_K))); bossInterval = Math.max(8, 12 - L.tier * 0.2) * BOSS_INT_K;   // smaller waves, slower cadence than any level
@@ -754,9 +755,9 @@
     fireAcc = 0; fireCount = 0;
     redTimer = 2;                                        // short grace period before the first wave / the boss
     waveQueue = 0; waveCursor = 0; for (var wc = 0; wc < MAX_COLS; wc++) { wq[wc] = 0; pa[wc] = 0; }
-    pipeRate = PIPE_RATE;
+    pipeRate = PIPE_RATE * levelDensity;
     pourInf = !!L.pour;
-    if (L.pour) { pipeRate = L.pourRate * SPAWN_DENSITY / (1 + POUR_COL_EASE * (L.cols - 1)); /* one cannon guards one lane at a time: wider boards pour a bit less per lane */ redTimer = 1e9; queueWave(L.pour); }   // Phase 16: one sustained pour, no further random waves
+    if (L.pour) { pipeRate = L.pourRate * levelDensity / (1 + POUR_COL_EASE * (L.cols - 1)); /* one cannon guards one lane at a time: wider boards pour a bit less per lane */ redTimer = 1e9; queueWave(L.pour); }   // Phase 16: one sustained pour, no further random waves
     threatClock = 0;
     for (var tc2 = 0; tc2 < MAX_COLS; tc2++) { tq[tc2] = 0; ta[tc2] = 0; }
     if (threatsOn) { for (var th = 0; th < L.threats.length; th++) tq[0] += L.threats[th][1]; }
