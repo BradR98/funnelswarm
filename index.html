@@ -181,6 +181,8 @@
   var TIER_SIZE = 5;
   var TERRAIN_EFF = 0.93;                 // throughput kept per terrain piece (measured)
   var BASE_HP_SCALE = 0.5;                // TTK baseline: the 1x starter cannon now clears the HQ as fast as the 2x did (L1 base 250 -> 125)
+  var MOUTH_HALF = 44;                    // spawn mouth half-width cap (was 24): a wider mouth restores the throughput that back-pressure costs
+  var BARR_RUNWAY = 140;                  // min free height between the spawn mouth and a barricade top
   var SPAWN_DENSITY = 1.5;                // funnel tuning: +50% spawn frequency (wave interval / 1.5; pipe, threat and pour rates x1.5)
   var THREAT_K = 1.0, THREAT_MIN = 8, THREAT_MAX = 24, THREAT_DELAY = 10, THREAT_RATE = 14 * SPAWN_DENSITY;   // threat budget: red wave size = THREAT_K x the blue barricade's hits
   var MAX_TERRAIN = 12, SLIDE_MIN = 70, RED_SLIDE = 90;   // min tangential slide speed so mobs never stall on a flat face
@@ -342,6 +344,8 @@
       var gTop = 1e9; for (j = 0; j < defs.length; j++) if (defs[j][7] === c && defs[j][1] < gTop) gTop = defs[j][1];
       var yMin = FIELD_TOP + 24, yMax = Math.min(360, gTop - GATE_H / 2 - 36);
       if (yMax < yMin) continue;
+      yMin = Math.max(yMin, BASE_BOTTOM + BARR_RUNWAY + 12);   // runway floor: barricade top >= BARR_RUNWAY px under the spawn mouth so a real stack can form
+      if (yMax < yMin) continue;                               // gates leave no room: skip this barricade
       if (n <= POUR_MAX_LEVEL) yMin = Math.max(yMin, yMax - 110);   // Phase 16: Tier-1 dams sit low in the available space, so a pour never stacks into one giant burst
       var by = yMin + rnd() * (yMax - yMin), clash = false;
       for (j = 0; j < L.terrain.length; j++) if ((L.barrCol[j] === c && Math.abs(L.terrain[j][1] - by) < 46) || Math.abs(L.terrain[j][1] - by) < 90) clash = true;   // funnel tuning: staggered heights, never a flat row across the lanes
@@ -861,9 +865,20 @@
     waveQueue += n;
   }
   function emitRed(c, cx, half) {
-    var rr = Math.random(), px = cx + (Math.random() * 2 - 1) * half + (Math.random() * 2 - 1) * SPAWN_JITTER;   // jitter: never two mobs on the same pixel
-    px = px < colX0[c] + RED_R ? colX0[c] + RED_R : (px > colX1[c] - RED_R ? colX1[c] - RED_R : px);
-    return spawnRed(px, (isBossLevel && bossActive ? bossY + BOSS_H / 2 - 6 : BASE_BOTTOM) + RED_R + 6 + (Math.random() * 2 - 1) * SPAWN_JITTER, rr < mixSprinter ? 2 : (rr < mixSprinter + mixTank ? 1 : 0));
+    var rr = Math.random(), type = rr < mixSprinter ? 2 : (rr < mixSprinter + mixTank ? 1 : 0), att, j;
+    var py = (isBossLevel && bossActive ? bossY + BOSS_H / 2 - 6 : BASE_BOTTOM) + RED_R + 6 + (Math.random() * 2 - 1) * SPAWN_JITTER;
+    for (att = 0; att < 3; att++) {
+      var px = cx + (Math.random() * 2 - 1) * half + (Math.random() * 2 - 1) * SPAWN_JITTER;   // jitter: never two mobs on the same pixel
+      px = px < colX0[c] + RED_R ? colX0[c] + RED_R : (px > colX1[c] - RED_R ? colX1[c] - RED_R : px);
+      var clear = true;                                       // back-pressure: never spawn inside a pile at the mouth; the queue waits instead
+      for (j = 0; j < redCount; j++) {
+        if (rdead[j] || ry[j] > py + 40) continue;
+        var ddx = rx[j] - px, ddy = ry[j] - py, rs = (RT_RAD[type] + RT_RAD[rtype[j]]) * 0.9;
+        if (ddx * ddx + ddy * ddy < rs * rs) { clear = false; break; }
+      }
+      if (clear) return spawnRed(px, py, type);
+    }
+    return false;
   }
   function threatStream(dt) {
     if (!isBossLevel || bossActive) threatClock += dt;       // the budget starts bleeding in THREAT_DELAY s after play (boss: after it appears)
@@ -873,7 +888,7 @@
       ta[c] += dt * THREAT_RATE;
       while (ta[c] >= 1 && tq[c] > 0) {
         var half = (colX1[c] - colX0[c]) / 2 - RED_R - 1;
-        if (!emitRed(c, (colX0[c] + colX1[c]) / 2, half < 24 ? half : 24)) { ta[c] = 0; break; }
+        if (!emitRed(c, (colX0[c] + colX1[c]) / 2, half < MOUTH_HALF ? half : MOUTH_HALF)) { ta[c] = 0; break; }
         ta[c] -= 1; tq[c]--;
       }
     }
@@ -895,7 +910,7 @@
       pa[c] += dt * pipeRate * (pourInf ? 1 : funnelBoost);   // pour: pipeRate is already the whole-board rate, so no extra boost (it double counted -> ~3x)
       while (pa[c] >= 1 && wq[c] > 0) {
         var half = (colX1[c] - colX0[c]) / 2 - RED_R - 1;
-        if (!emitRed(c, (colX0[c] + colX1[c]) / 2, half < 24 ? half : 24)) { pa[c] = 0; break; }
+        if (!emitRed(c, (colX0[c] + colX1[c]) / 2, half < MOUTH_HALF ? half : MOUTH_HALF)) { pa[c] = 0; break; }
         pa[c] -= 1; wq[c]--; waveQueue--;
       }
     }
@@ -983,7 +998,7 @@
     for (var k = 0; k < doorCount; k++) {
       if (doorOpen[k]) { doorAcc[k] = 0; continue; }
       var d = doorDiv[k], wx = (colX1[d] + colX0[d + 1]) * 0.5, nl = 0, nr = 0, i;
-      var yTop = doorY0[k] - RED_R * STACK_DY, yBot = doorY1[k] + RED_R;
+      var yTop = Math.max(doorY0[k] - RED_R * STACK_DY, BASE_BOTTOM + RED_R * 3), yBot = doorY1[k] + RED_R;
       for (i = 0; i < redCount; i++) {
         if (rdead[i]) continue;
         var y = ry[i]; if (y < yTop || y > yBot) continue;

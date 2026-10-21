@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Funnel: density-trap fixes A-C (branch `feature/funnel-logic`)
+- **Diagnosis:** barricades could sit only 25-60px under the spawn mouth (about a third of levels), so the "stack" was the mouth itself: 5 reds counted as a jam, the n^1.5 surge fired and doors broke within 2-4s regardless of play, while fixed-rate spawning stuffed new reds into the overlap.
+- **A, runway floor:** a barricade's top must be at least `BARR_RUNWAY = 140`px below the spawn mouth (skipped if the gates leave no room). Measured over L3-39: min runway 25px -> 140px.
+- **B, emission back-pressure:** `emitRed` now tries 3 spawn positions and spawns only into a clear spot (no red within 0.9x the summed radii); otherwise the wave / threat queue waits. Mouth overlap pairs fall to ~0. To recover the throughput this costs, the spawn mouth half-width cap went 24 -> `MOUTH_HALF = 44`. Net L6 steady-state on-board reds ~150 vs ~215 before (~70%), a deliberate trade for real, physical stacks.
+- **C, mouth excluded from pressure:** door-pressure counting starts at `BASE_BOTTOM + 3 bodies`, so reds still leaving the mouth never count as jam pressure.
+- Doors still break once and stay open (option D, re-arming doors, declined).
+- Service worker cache `mob-swarm-funnel-v2`.
+
 ### Funnel: TTK baseline and HP flattening (branch `feature/funnel-logic`)
 - **Base HP halved:** the HQ's starting HP is now `L.baseHP x BASE_HP_SCALE (0.5)` on every non-sandbox level, so the 1x starter cannon clears the funnel with the friction the 2x gave (L1 250 -> 125; sampled L2 128, L5 875, L9 1088, L12 1109). Red mobs themselves have 1-3 HP at base so cannot be halved: this is the HQ base HP ("Level 1 Base HP"). Boss HP, `BASE_HIT` and the sandbox are untouched.
 - **HP curve flattened:** `RED_HP_GROWTH` 1.25 -> 1.10, so red HP = `RT_HP x 1.10^(level-5)` from L5 (L7 = +21% over L5, was +56%; L12 = x1.95). Density multiplier untouched.
