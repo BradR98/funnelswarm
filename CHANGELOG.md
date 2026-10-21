@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Gate concurrency cap + mid-game density squeeze (branch `feature/funnel-logic`)
+- **Gate concurrency cap.** Gates here are sliding rows built at level start (they never "fall"), so the cap works as an activation limit. Gates start dormant (not drawn, no hit test, no motion). One more is activated per frame only while the active count is under the cap, which depends on the live blue-mob count: under 10 mobs gives 1 active gate, 10-24 gives 2, 25+ gives no extra limit. Once active a gate stays active. RNG value math is untouched. Debug: `__mob.get().gatesActive`.
+- **Density tiers shifted** (`densityFor`): L1-2 1.0x, L3 1.5x (was L4), L4-5 1.8x (new bridge tier), L6-9 2.2x (was L7), L10+ 3.5x.
+- Service worker cache: `mob-swarm-funnel-v8`.
+
 ### Chute overwhelm: crushed gate ceiling + late-game density tiers (branch `feature/funnel-logic`)
 - **Crushed RNG gate ceiling.** `GATE_NERF` is replaced by explicit windows (`GATE_WIN`, linear between anchors, hard-clamped): `x` gates roll L4 x1.2-1.8, L7 x1.5-2.4, L10+ x2.0-3.0, so the absolute cap is x3.0. `+n` gates make n+1 mobs, so their window is the x window minus 1 (L10+ tops out at +2.0, i.e. x3). Fractional values and probabilistic rounding are unchanged.
 - **Density tiers** (`densityFor`): L1-3 1.0x, L4-6 1.5x, L7-9 2.2x, L10+ 3.5x. These scale the wave interval and the pipe and pour rates. Back-pressure in `emitRed` is unchanged, so overflow waits in the spawn queue (capped by the 1000-mob pool) and the chute packs, which feeds Vertical Surge. Sandbox exempt.

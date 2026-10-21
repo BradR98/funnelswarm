@@ -184,7 +184,7 @@
   var MOUTH_HALF = 44;                    // spawn mouth half-width cap (was 24): a wider mouth restores the throughput that back-pressure costs
   var BARR_RUNWAY = 140;                  // min free height between the spawn mouth and a barricade top
   var SPAWN_DENSITY = 1.0, DENSITY_STEP = 1.5, DENSITY_STEP_LEVEL = 3, levelDensity = 1;
-  function densityFor(n) { return n >= 10 ? 3.5 : (n >= 7 ? 2.2 : (n > DENSITY_STEP_LEVEL ? DENSITY_STEP : 1)); }   // tiers: L1-3 1.0x, L4-6 1.5x, L7-9 2.2x, L10+ 3.5x
+  function densityFor(n) { return n >= 10 ? 3.5 : (n >= 6 ? 2.2 : (n >= 4 ? 1.8 : (n >= 3 ? 1.5 : 1))); }   // tiers: L1-2 1.0x, L3 1.5x, L4-5 1.8x, L6-9 2.2x, L10+ 3.5x
   // density step: L1-3 run at 1.0x; every level above 3 spawns 1.5x (wave interval / 1.5; pipe and pour rates x1.5)
   var THREAT_K = 1.0, THREAT_MIN = 8, THREAT_MAX = 24, THREAT_DELAY = 10, THREAT_RATE = 14 * SPAWN_DENSITY;   // threat budget: red wave size = THREAT_K x the blue barricade's hits
   var MAX_TERRAIN = 12, SLIDE_MIN = 70, RED_SLIDE = 90;   // min tangential slide speed so mobs never stall on a flat face
@@ -645,6 +645,10 @@
   var redTimer = 3;
   var baseHeat = 0, ghostHP = 1200, cannonFlash = 0;   // baseHeat: damage flicker; ghostHP: chip-damage trail
   var gateFlash = new Float32Array(MAX_GATES);
+  // Gate concurrency cap: gates are introduced one at a time. The number of ACTIVE gates is capped by the live blue-mob count
+  // (< 10 mobs: 1 gate, 10-24: 2 gates, 25+: no extra limit). A dormant gate is invisible and inert until a slot frees under the cap.
+  var gateOn = new Uint8Array(MAX_GATES);
+  function gateCap(nMobs) { return nMobs < 10 ? 1 : (nMobs < 25 ? 2 : 99); }
   var blueCX = W / 2, blueN = 0;           // blue centroid from previous frame
   var autoFire = true, spawnerOn = true;   // toggled only by debug hooks
 
@@ -733,7 +737,7 @@
     var i;
     gateCount = L.gates.length;
     for (i = 0; i < MAX_GATES; i++) {
-      gateFlash[i] = 0;
+      gateFlash[i] = 0; gateOn[i] = 0;
       if (i < gateCount) cfgGate(GATES[i], L.gates[i]);
     }
     bumpCount = L.bumpers.length;
@@ -1006,7 +1010,11 @@
     clock += dt;
 
     // Gates slide and bounce; '-' gates recharge
+    var gActive = 0, gCap = gateCap(mobCount);
+    for (gi = 0; gi < gateCount; gi++) if (gateOn[gi]) gActive++;
+    for (gi = 0; gi < gateCount && gActive < gCap; gi++) if (!gateOn[gi]) { gateOn[gi] = 1; gActive++; }   // spawn the next gate only while under the cap
     for (gi = 0; gi < gateCount; gi++) {
+      if (!gateOn[gi]) continue;
       var G = GATES[gi];
       G.x += G.vx * dt;
       if (G.x < G.min) { G.x = G.min; G.vx = Math.abs(G.vx); }
@@ -1171,7 +1179,7 @@
         var gateKilled = false;
         for (gi = 0; gi < gateCount; gi++) {
           var bit = 1 << gi;
-          if (m & bit) continue;
+          if ((m & bit) || !gateOn[gi]) continue;
           var gt = GATES[gi], hh = gt.h * 0.5;
           if (x + MOB_R >= gt.x && x - MOB_R <= gt.x + gt.w &&
               y + MOB_R >= gt.y - hh && y - MOB_R <= gt.y + hh) {
@@ -1465,6 +1473,7 @@
     // Gates
     ctx.font = '800 22px system-ui, sans-serif';
     for (var gi = 0; gi < gateCount; gi++) {
+      if (!gateOn[gi]) continue;
       var g = GATES[gi], f = gateFlash[gi];
       var isMul = g.type === 'x', isNeg = g.type === '-' || g.type === '/';
       ctx.fillStyle = isNeg ? 'rgba(255,70,90,' + (0.35 + f * 0.4) + ')'
@@ -1680,7 +1689,7 @@
       update: update, reset: reset, gates: GATES, restart: onRestart, generateLevel: generateLevel,
       MAX_WAVE: MAX_WAVE,
       setLevel: function (n) { level = n; reset(); }, warp: warpTo,
-      setGates: function (defs) { gateCount = defs.length; for (var q = 0; q < defs.length; q++) cfgGate(GATES[q], defs[q]); },
+      setGates: function (defs) { gateCount = defs.length; for (var q = 0; q < defs.length; q++) { cfgGate(GATES[q], defs[q]); gateOn[q] = 1; } },
       setObstacles: function (o) {
         setTerrain(o.terrain || []);
         bumpCount = (o.bumpers || []).length; holeCount = (o.holes || []).length;
@@ -1690,7 +1699,7 @@
       get: function () {
         var sl = Array.prototype.slice;
         return { mobCount: mobCount, redCount: redCount, baseHP: baseHP, cannonHP: cannonHP, state: state,
-                 level: level, gateCount: gateCount, bumpCount: bumpCount, holeCount: holeCount,
+                 level: level, gateCount: gateCount, gatesActive: (function () { var q = 0; for (var z = 0; z < gateCount; z++) q += gateOn[z]; return q; })(), gateCap: gateCap, bumpCount: bumpCount, holeCount: holeCount,
                  isBoss: isBossLevel, bossActive: bossActive, bossHP: bossHP, bossMaxHP: bossMaxHP, bossY: bossY, bossX: bossX,
                  capBlue: MAX_MOBS, capRed: MAX_RED,
                  redX: sl.call(rx, 0, redCount), redY: sl.call(ry, 0, redCount), redHP: sl.call(rhp, 0, redCount), redType: sl.call(rtype, 0, redCount),
