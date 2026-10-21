@@ -211,25 +211,19 @@
 
   var FIELD_TOP = 128, LANE_BOTTOM = 494;                      // terrain lives between the base and the muzzle (shots spawn at 504)
   var GATE_SLOTS = [354, 316, 278, 240];                       // gate rows inside a column, bottom to top (38px apart)
-  // ---------- Phase 11: discrete columns (1-4), dividers with trapdoors ----------
-  var TRACK_SCALE = 0.72;   // track constriction: lane widths x0.72, so the packed track is ~27% narrower (dead-space margins fill the rest)
-  var COL_W = [0, 120, 150, 104, 80].map(function (w) { return Math.round(w * TRACK_SCALE); }), DIV_W = 8, MAX_COLS = 4, MAX_DOORS = 3, DOOR_H = 56;
-  function columnCount(n) { return n <= 2 ? 1 : (n <= 5 ? 2 : (n <= 9 ? 3 : 4)); }   // Phase 12: L1-2 / 3-5 / 6-9 / 10+
+  // ---------- Single chute geometry (was: discrete columns with dividers and trapdoors) ----------
+  // SINGLE CHUTE: the board is exactly ONE vertical pipe (no lanes, dividers, doors or lateral spill). The rest of the canvas is dead space.
+  var CHUTE_W = 96, MAX_COLS = 1, DIV_W = 0;
+  var COL_W = [0, CHUTE_W];
+  function columnCount(n) { return 1; }
   function colSpan(nc, c) {                                     // [x0, x1] of column c when nc columns are active (centred)
     var cw = COL_W[nc], tot = nc * cw + (nc - 1) * DIV_W, ax0 = (W - tot) / 2, x0 = ax0 + c * (cw + DIV_W);
     return [x0, x0 + cw];
   }
   var colN = 1, colX0 = new Float32Array(MAX_COLS), colX1 = new Float32Array(MAX_COLS), AX0 = 0, AX1 = W;
-  // Phase 14: pressure doors embedded in the lane dividers (solid until their HP is crushed to 0)
-  var CRUSH_MIN_VX = 45, CRUSH_CD = 0.3, BREACH_V = 150;   // lateral push (px/s) needed to hurt a door; seconds between hits per mob; spill speed on breach
-  var doorCount = 0, doorDiv = new Int8Array(MAX_DOORS), doorY0 = new Float32Array(MAX_DOORS), doorY1 = new Float32Array(MAX_DOORS);
-  var doorHP = new Int16Array(MAX_DOORS), doorMax = new Int16Array(MAX_DOORS), doorOpen = new Uint8Array(MAX_DOORS), doorFlash = new Float32Array(MAX_DOORS);
   // Phase 13: x2 multiplier zones left behind by shattered Blue Barricades
   var ZONE_TIME = 10, ZONE_H = 30, MAX_ZONES = 4, ZONE_BIT = 64;
   var zoneFlash = 0, zoneCount = 0, zoneCol = new Int8Array(MAX_ZONES), zoneY = new Float32Array(MAX_ZONES), zoneT = new Float32Array(MAX_ZONES);
-  // Crush-angle filter: a red only damages a pressure door when it hits with heavy LATERAL force: |vx| is high and the
-  // collision vector is more than 45 degrees off the vertical (|vx| >= |vy|). Free-falling mobs deal 0.
-  function crushHit(vx, vy) { vx = vx < 0 ? -vx : vx; vy = vy < 0 ? -vy : vy; return vx >= CRUSH_MIN_VX && vx >= vy; }
   function setColumns(nc) {
     colN = nc;
     for (var c = 0; c < nc; c++) { var sp = colSpan(nc, c); colX0[c] = sp[0]; colX1[c] = sp[1]; }
@@ -240,8 +234,20 @@
     for (var c = 0; c < colN; c++) { var d = x - (colX0[c] + colX1[c]) * 0.5; if (d < 0) d = -d; if (d < bd) { bd = d; best = c; } }
     return best;
   }            // y centers, bottom to top (38px apart, never overlap)
-  var LOW_POOL = [['x', 2, 'x2'], ['+', 2, '+2']];       // wide, near the cannon
-  var HIGH_POOL = [['x', 3, 'x3'], ['+', 10, '+10']];    // narrow, high up near the enemy
+  // Dynamic RNG gate drops (replaces the static pools: L3 = x2, +2 / high = x3, +10). Each gate rolls its value inside a window whose floor and
+  // ceiling both rise with the level (L4: x2-x4, L7: x3-x6, L10: x4-x8). 'L' gates (wide, low) favour the bottom of the window, 'H' gates (narrow,
+  // high) the top. Values are "messy" fractions (x2.2, +1.5); applyGate rounds them probabilistically so the AVERAGE clone count is exact.
+  function fmtGate(v) { var t = Math.round(v * 10) / 10; return (t % 1 === 0) ? String(t) : t.toFixed(1); }
+  function rollGate(kind, n, rnd) {
+    var isX = rnd() < 0.5, lo, hi, a;
+    if (isX) { lo = Math.max(1.5, 2 + (n - 4) / 3); hi = Math.max(lo + 1, 4 + (n - 4) * 2 / 3); }
+    else { lo = 1 + (n - 3) * 0.3; hi = 3 + (n - 3) * 0.8; }
+    a = rnd(); if (kind === 'L') a = a * a * 0.85; else a = 0.35 + 0.65 * Math.sqrt(a);   // skew: lows cluster near the floor, highs near the ceiling
+    var v = Math.round((lo + (hi - lo) * a) * 10) / 10;
+    if (v === Math.round(v) && rnd() < 0.7) v += rnd() < 0.5 ? 0.1 : -0.1;                  // keep drops "organic": mostly non-integer
+    if (v < 1.1) v = 1.1;
+    return isX ? ['x', v, 'x' + fmtGate(v)] : ['+', v, '+' + fmtGate(v)];
+  }
   function tierOf(n) { return Math.ceil(n / TIER_SIZE); }
   // Throughput (blue hits/s) a perfect stream is expected to sustain: efficiency-scaled MTM, capped by the pool
   // Measured (bot-sim) efficiency is not constant: it falls as MTM grows (gates are missed, clones spread out, the
@@ -264,12 +270,12 @@
   // gate def: [width, y, type, n, label, startRight, speed]
   //   types: 'x' multiply, '+' add, '-' tax (destroys up to n, recharges), '/' halve (destroys every 2nd)
   function generateLevel(n) {
-    COL_W[1] = n === SANDBOX_LEVEL ? SANDBOX_W : Math.round(120 * TRACK_SCALE);
+    COL_W[1] = n === SANDBOX_LEVEL ? SANDBOX_W : CHUTE_W;
     if (n === SANDBOX_LEVEL) {                       // Phase 15: glass box. One wide column, an indestructible plug at the bottom, nothing else.
       var sx0 = (W - SANDBOX_W) / 2;
       return { n: n, tier: tierOf(n), baseHP: 1e6, mtm: 1, throughput: 0, isBoss: false, bossHP: 0, redInterval: 99, waveMin: 8, waveMax: 12, redSpeedMul: 1,
                mixTank: 0, mixSprinter: 0, terrain: [[sx0 + SANDBOX_W / 2, 470, SANDBOX_W / 2, 14, 0, 1, 255, 0]], gates: [], bumpers: [], holes: [],
-               cols: 1, doors: [], threats: [], barrCol: [0], terrainEff: 1, sandbox: true };
+               cols: 1, threats: [], barrCol: [0], terrainEff: 1, sandbox: true };
     }
     var rnd = rng32(n * 7919 + 12345);
     var isBoss = (n % 10) === 0;
@@ -312,36 +318,31 @@
       var hasX = false, first = defs.length;
       for (i = 0; i < seqs[c].length; i++) {
         var speed = Math.min(240, 55 + n * 2 + rnd() * 20) * 0.6, kind = seqs[c][i], d, w;
-        if (kind === 'L') { d = LOW_POOL[(rnd() * 2) | 0]; w = Math.round(cw * (0.72 + rnd() * 0.12)); defs.push([w, GATE_SLOTS[i], d[0], d[1], d[2], rnd() < 0.5, speed, c]); }
-        else if (kind === 'H') { d = HIGH_POOL[(rnd() * 2) | 0]; w = Math.round(cw * (0.38 + rnd() * 0.1)); defs.push([w, GATE_SLOTS[i], d[0], d[1], d[2], rnd() < 0.5, speed, c]); }
+        if (kind === 'L') { d = rollGate('L', n, rnd); w = Math.round(cw * (0.72 + rnd() * 0.12)); defs.push([w, GATE_SLOTS[i], d[0], d[1], d[2], rnd() < 0.5, speed, c]); }
+        else if (kind === 'H') { d = rollGate('H', n, rnd); w = Math.round(cw * (0.38 + rnd() * 0.1)); defs.push([w, GATE_SLOTS[i], d[0], d[1], d[2], rnd() < 0.5, speed, c]); }
         else { d = rnd() < 0.5 ? ['-', 10, '-10'] : ['/', 2, '/2']; w = Math.round(cw * 0.78); defs.push([w, GATE_SLOTS[i], d[0], d[1], d[2], false, speed * 1.05, c]); }
         if (d[0] === 'x') hasX = true;
       }
-      if (!hasX && seqs[c].length) { var fx = defs[first], hi = fx[0] < 0.6 * cw; fx[2] = 'x'; fx[3] = hi ? 3 : 2; fx[4] = hi ? 'x3' : 'x2'; }   // every column has a multiplier
+      if (!hasX && seqs[c].length) { var fx = defs[first], hi = fx[0] < 0.6 * cw; fx[2] = 'x'; fx[3] = Math.round((hi ? 3 : 2) * 10) / 10 + (Math.max(0, n - 4) * 0.2); fx[3] = Math.round(fx[3] * 10) / 10; fx[4] = 'x' + fmtGate(fx[3]); }   // every column has a multiplier
       for (i = 0; i < seqs[c].length; i++) if (seqs[c][i] === 'N') defs[first + i][5] = !defs[first + i + 1][5];   // negative slides opposite the high it guards
     }
     L.gates = defs;
     L.mtm = calculateLevelMTM(defs);
 
-    // --- Phase 11: trapdoors (gaps in the lane dividers, staggered in height) and destructible barricades ---
+    // --- destructible barricades (single chute: each one plugs the whole pipe) ---
     function obbD2(pc, x, y) {
       var dx = Math.abs(x - pc[0]) - pc[2], dy = Math.abs(y - pc[1]) - pc[3];
       dx = dx > 0 ? dx : 0; dy = dy > 0 ? dy : 0; return dx * dx + dy * dy;
     }
-    L.doors = []; L.terrainEff = 1; L.barrCol = [];
+    L.terrainEff = 1; L.barrCol = [];
     // Phase 12: L1-2 spawn only gray blocks. Blue barricades (rewards) never share a column and each one carries a
     // Threat Budget: a dense red wave in an ADJACENT column, sized by the barricade's hit value.
-    var nbar = n <= 2 ? 0 : Math.min(Math.ceil(MAX_TERRAIN / 2), 1 + (((n - 3) / 8) | 0)), bk, blueUsed = [false, false, false, false];
+    var nbar = n <= 2 ? 0 : Math.min(Math.ceil(MAX_TERRAIN / 2), 1 + (((n - 3) / 8) | 0)), bk;
     L.threats = [];
     for (bk = 0; bk < nbar; bk++) {
-      var rt = rnd(), typ = n <= 2 ? 0 : (rt < 0.25 ? 0 : (rt < 0.65 ? 1 : 2)), freeC = [];
-      if (typ === 1) { for (j = 0; j < nc; j++) if (!blueUsed[j]) freeC.push(j); if (nc < 2 || !freeC.length || isBoss) typ = 0; }   // boss levels: the boss is the threat, no reward blocks
-      c = typ === 1 ? freeC[(rnd() * freeC.length) | 0] : (rnd() * nc) | 0;
-      // Funnel tuning: the first barricade always lands in the centre (funnel) lane so the stream has to redirect right away;
-      // later ones go wherever, but never plug every lane (at least one lane always stays open for the spill to find).
-      if (bk === 0 && nc >= 3) { var cfc = nc >> 1; if (typ !== 1 || !blueUsed[cfc]) c = cfc; }
-      var plugged = {}, np = 0; for (j = 0; j < L.barrCol.length; j++) if (!plugged[L.barrCol[j]]) { plugged[L.barrCol[j]] = 1; np++; }
-      if (nc >= 2 && !plugged[c] && np >= nc - 1) continue;
+      var rt = rnd(), typ = n <= 2 ? 0 : (rt < 0.25 ? 0 : (rt < 0.65 ? 1 : 2));
+      if (typ === 1) typ = 0;                  // single chute: no adjacent lane for a reward block's threat wave, so blue barricades are gone
+      c = 0;
       var gTop = 1e9; for (j = 0; j < defs.length; j++) if (defs[j][7] === c && defs[j][1] < gTop) gTop = defs[j][1];
       var yMin = FIELD_TOP + 24, yMax = Math.min(360, gTop - GATE_H / 2 - 36);
       if (yMax < yMin) continue;
@@ -354,25 +355,6 @@
       var bx0 = colSpan(nc, c)[0], hits = Math.min(60, Math.round(10 + n * 0.5));
       L.terrain.push([bx0 + cw / 2, by, cw / 2, 12, 0, 1, typ, hits]);   // Phase 13: a barricade plugs its whole column (a dam)
       L.barrCol.push(c);
-      if (typ === 1) {
-        blueUsed[c] = true;
-        var adj = c === 0 ? 1 : (c === nc - 1 ? nc - 2 : (rnd() < 0.5 ? c - 1 : c + 1));
-        L.threats.push([adj, Math.max(THREAT_MIN, Math.min(THREAT_MAX, Math.round(hits * THREAT_K))), c, hits]);
-      }
-    }
-
-    // --- Phase 14: pressure doors in the dividers. Placed where a dam's pile will press: just above a barricade of either
-    //     neighbouring column when there is one. HP 100-250 by tier. ---
-    if (nc >= 2) {
-      var perm = [0, 1, 2].slice(0, nc - 1), pj, pt, dHP = Math.min(250, 100 + (tier - 1) * 15);
-      for (i = perm.length - 1; i > 0; i--) { pj = (rnd() * (i + 1)) | 0; pt = perm[i]; perm[i] = perm[pj]; perm[pj] = pt; }
-      for (i = 0; i < nc - 1; i++) {
-        var dy1 = 0;
-        for (j = 0; j < L.terrain.length; j++) if ((L.barrCol[j] === i || L.barrCol[j] === i + 1) && L.terrain[j][6] !== 255) dy1 = Math.max(dy1, L.terrain[j][1] + 6);
-        if (!dy1) dy1 = 200 + perm[i] * 60 + rnd() * 20;
-        if (dy1 - DOOR_H < BASE_BOTTOM + 4) dy1 = BASE_BOTTOM + 4 + DOOR_H;
-        L.doors.push([i, Math.round(dy1 - DOOR_H), Math.round(dy1), dHP + ((rnd() * 20) | 0)]);
-      }
     }
 
     // --- static obstacles (placed away from gate rows, terrain lanes and each other) ---
@@ -524,9 +506,12 @@
   var rvy = new Float32Array(MAX_RED);     // Phase 13: real vertical velocity (gravity, halts when supported)
   var rpx = new Float32Array(MAX_RED), rpy = new Float32Array(MAX_RED);   // position at the start of the step (velocity = displacement / dt)
   var rcr = new Float32Array(MAX_RED);     // lateral wall overshoot accumulated this step (the crush push)
-  var rcd = new Float32Array(MAX_RED);     // per-mob door-hit cooldown
+  var rcd = new Float32Array(MAX_RED);     // per-mob cooldown (unused since the doors were removed)
   var rside = new Int8Array(MAX_RED);
-  var SPILL_PRESSURE = 3, DOOR_PRESSURE_K = 1.0, DOOR_PRESSURE_CAP = 25, SURGE_AT = 5, SURGE_EXP = 1.5, STACK_DY = 4, doorAcc = new Float32Array(MAX_DOORS), pressureDmg = 0;   // door-busting: >= 3 stalled mobs stacked on a door grind its HP counter at K HP/s per mob (capped)
+  // VERTICAL SURGE: when SURGE_TOUCH+ mobs are jammed touching each other in the chute, the whole stack lunges: +50% speed and knockback
+  // immunity for SURGE_TIME s (then a SURGE_CD s cooldown so a pile can't chain-surge forever). The player must trim the front line.
+  var SURGE_TOUCH = 5, SURGE_TIME = 1.5, SURGE_CD = 3, SURGE_SPEED = 1.5, SURGE_TOUCH_K = 1.1, SURGE_MIN_Y = 90, SURGE_JAM_VY = 45, surgeClock = 0, surges = 0;
+  var rsurge = new Float32Array(MAX_RED), rscd = new Float32Array(MAX_RED), rnb = new Uint8Array(MAX_RED);
   var rdead = new Uint8Array(MAX_RED);
   var rtype = new Uint8Array(MAX_RED);     // Bestiary type id
   var rmax = new Uint16Array(MAX_RED);     // spawn HP (after the level multiplier): wound colouring compares against this
@@ -537,13 +522,13 @@
     type = type | 0;
     if (redCount >= MAX_RED || y + RT_RAD[type] > TRACK_Y) return false;
     var i = redCount++;
-    rx[i] = x; ry[i] = y; rvx[i] = 0; rvy[i] = redSpeed * RT_SPEED[type] > RED_SPEED_CAP ? RED_SPEED_CAP : redSpeed * RT_SPEED[type]; rkx[i] = 0; rky[i] = 0; rcr[i] = 0; rcd[i] = 0; rside[i] = 0; rdead[i] = 0; rtype[i] = type; rhp[i] = rmax[i] = Math.min(RED_HP_CAP, Math.round(RT_HP[type] * redHpMul));
+    rx[i] = x; ry[i] = y; rvx[i] = 0; rvy[i] = redSpeed * RT_SPEED[type] > RED_SPEED_CAP ? RED_SPEED_CAP : redSpeed * RT_SPEED[type]; rkx[i] = 0; rky[i] = 0; rcr[i] = 0; rcd[i] = 0; rside[i] = 0; rdead[i] = 0; rtype[i] = type; rsurge[i] = 0; rscd[i] = 0; rhp[i] = rmax[i] = Math.min(RED_HP_CAP, Math.round(RT_HP[type] * redHpMul));
     return true;
   }
 
   function copyRed(w, i) {
     rx[w] = rx[i]; ry[w] = ry[i]; rvx[w] = rvx[i]; rvy[w] = rvy[i]; rhp[w] = rhp[i]; rmax[w] = rmax[i]; rtype[w] = rtype[i]; rkx[w] = rkx[i]; rky[w] = rky[i];
-    rcr[w] = rcr[i]; rcd[w] = rcd[i]; rside[w] = rside[i];
+    rcr[w] = rcr[i]; rcd[w] = rcd[i]; rside[w] = rside[i]; rsurge[w] = rsurge[i]; rscd[w] = rscd[i];
   }
 
   // ---------- Spatial grid for blue-vs-red (linked lists in typed arrays, zero allocation) ----------
@@ -774,10 +759,8 @@
     if (L.pour) { pipeRate = L.pourRate * SPAWN_DENSITY / (1 + POUR_COL_EASE * (L.cols - 1)); /* one cannon guards one lane at a time: wider boards pour a bit less per lane */ redTimer = 1e9; queueWave(L.pour); }   // Phase 16: one sustained pour, no further random waves
     threatClock = 0;
     for (var tc2 = 0; tc2 < MAX_COLS; tc2++) { tq[tc2] = 0; ta[tc2] = 0; }
-    if (threatsOn) { var tfc = funnelCol(); for (var th = 0; th < L.threats.length; th++) tq[tfc] += L.threats[th][1]; }   // funnel: threat budgets also leave the centre lane
-    funnelBoost = colN >= 3 ? 2 : 1;
-    doorCount = L.doors.length; zoneCount = 0;
-    for (var dk = 0; dk < doorCount; dk++) { doorDiv[dk] = L.doors[dk][0]; doorY0[dk] = L.doors[dk][1]; doorY1[dk] = L.doors[dk][2]; doorHP[dk] = doorMax[dk] = L.doors[dk][3]; doorOpen[dk] = 0; doorFlash[dk] = 0; }
+    if (threatsOn) { for (var th = 0; th < L.threats.length; th++) tq[0] += L.threats[th][1]; }
+    zoneCount = 0; surgeClock = 0; surges = 0;
     crateActive = false; crateTimer = CRATE_MIN + Math.random() * (CRATE_MAX - CRATE_MIN); pillCount = 0;
     powerLeft = 0; powerName = ''; setWeapon(Armory[baseWeaponName]);
     baseHeat = 0; ghostHP = baseHP; cannonFlash = 0;
@@ -840,7 +823,7 @@
   // Spawn clones for gate `gi` triggered by blue mob `mobIdx` at (x, y).
   function applyGate(mobIdx, gi, x, y) {
     var gate = GATES[gi];
-    var extra = gate.type === 'x' ? gate.n - 1 : gate.n;
+    var ex = gate.type === 'x' ? gate.n - 1 : gate.n, extra = Math.floor(ex) + (Math.random() < ex - Math.floor(ex) ? 1 : 0);   // fractional gates: probabilistic rounding
     var mask = (1 << gi) | mmask[mobIdx];   // clones inherit every gate the parent has passed
     gateFlash[gi] = 1;
     sfxGate();
@@ -855,14 +838,13 @@
   // Red waves are queued and released as a concentrated stream from one pipe at the top (or from the boss hull).
   // FUNNEL: every red enters the board from ONE column, the centre lane (odd lane counts: the middle lane; even counts:
   // one of the two middle lanes, alternating per call). The rest of the board fills only by the overflow 'spill' below.
-  function funnelCol() { return colN >> 1; }                      // odd counts: the middle lane; even counts: the lane just right of centre (fixed, matches the first barricade)
-  var funnelBoost = 1;                                           // the single pipe carries what the old multi-lane dispatch spread over several
+  function funnelCol() { return 0; }                              // single chute: every red enters the one lane
   function queueWave(fixedN) {
     var n = fixedN || (waveMin + ((Math.random() * (waveMax - waveMin + 1)) | 0)), j;
     if (n > MAX_RED - redCount - waveQueue) n = MAX_RED - redCount - waveQueue;      // never overrun the pool
     if (n <= 0) return;
     if (isBossLevel && bossActive) wq[0] += n;                 // the mothership drips them out of its hull
-    else wq[funnelCol()] += n;                                 // funnel: 100% of the wave drops from the centre lane
+    else wq[0] += n;
     waveQueue += n;
   }
   function emitRed(c, cx, half) {
@@ -908,7 +890,7 @@
     }
     for (c = 0; c < colN; c++) {
       if (wq[c] <= 0) { pa[c] = 0; continue; }
-      pa[c] += dt * pipeRate * (pourInf ? 1 : funnelBoost);   // pour: pipeRate is already the whole-board rate, so no extra boost (it double counted -> ~3x)
+      pa[c] += dt * pipeRate;
       while (pa[c] >= 1 && wq[c] > 0) {
         var half = (colX1[c] - colX0[c]) / 2 - RED_R - 1;
         if (!emitRed(c, (colX0[c] + colX1[c]) / 2, half < MOUTH_HALF ? half : MOUTH_HALF)) { pa[c] = 0; break; }
@@ -954,75 +936,40 @@
       }
     }
   }
-  // Closed pressure door touching red i (column rc, pushing toward `side`) or -1
-  function doorAt(rc, side, y, rad) {
-    var d = side > 0 ? rc : rc - 1;
-    for (var k = 0; k < doorCount; k++) if (doorDiv[k] === d && !doorOpen[k] && y >= doorY0[k] - rad && y <= doorY1[k] + rad) return k;
-    return -1;
-  }
-  function breachDoor(k, side) {                 // the door shatters for good; the pressurised stack spills through the gap
-    doorOpen[k] = 1; doorHP[k] = 0;
-    var d = doorDiv[k], mx0 = (colX1[d] + colX0[d + 1]) * 0.5, my0 = (doorY0[k] + doorY1[k]) * 0.5, j;
-    for (j = 0; j < 5; j++) spawnPop(mx0 + (Math.random() - 0.5) * 10, my0 + (Math.random() - 0.5) * (doorY1[k] - doorY0[k]));
-    sfxHit();
-    var from = side > 0 ? d : d + 1;
-    for (j = 0; j < redCount; j++) {
-      if (ry[j] < doorY0[k] - 40 || ry[j] > doorY1[k] + 40) continue;
-      if (colOf(rx[j]) !== from) continue;
-      rkx[j] = side * BREACH_V; rvx[j] = side * BREACH_V * 0.5;
-    }
-  }
-  // Door pressure: a stack of >= SPILL_PRESSURE stalled reds jammed against a closed door grinds its HP counter down; the lateral
-  // spill happens ONLY when that counter hits 0 and the door breaches (breachDoor kicks the pressurised stack through the gap).
-  function doorPressure(dt) {
-    if (!doorCount || !redCount) return;
-    var laneN = [0, 0, 0, 0], lj;                       // fluid leveling: live reds per lane (stack heights)
-    for (lj = 0; lj < redCount; lj++) if (!rdead[lj]) laneN[colOf(rx[lj])]++;
-    // Fluid leveling: a stalled red beside a breached door drifts through it. With a gap on BOTH sides it goes toward the emptier
-    // lane (probability tilts with the stack-height difference; equal lanes = a fair coin), so a breach never favours left over right.
-    for (lj = 0; lj < redCount; lj++) {
-      if (rdead[lj]) continue;
-      var lsp = redSpeed * RT_SPEED[rtype[lj]]; if (lsp > RED_SPEED_CAP) lsp = RED_SPEED_CAP;
-      if (rvy[lj] > 0.35 * lsp) continue;
-      var lc = colOf(rx[lj]), ly = ry[lj], oL = false, oR = false, lk;
-      for (lk = 0; lk < doorCount; lk++) {
-        if (!doorOpen[lk] || ly < doorY0[lk] - 8 || ly > doorY1[lk] + 8) continue;
-        if (doorDiv[lk] === lc) oR = true; else if (doorDiv[lk] === lc - 1) oL = true;
-      }
-      if (!oL && !oR) continue;
-      var ldir;
-      if (oL && oR) { var la = laneN[lc - 1], lb = laneN[lc + 1]; ldir = Math.random() < 0.5 + 0.5 * (la - lb) / (la + lb + 1) ? 1 : -1; }
-      else ldir = oR ? 1 : -1;
-      rkx[lj] += ldir * BREACH_V * 3 * dt;
-      if (rkx[lj] > BREACH_V * 0.6) rkx[lj] = BREACH_V * 0.6; else if (rkx[lj] < -BREACH_V * 0.6) rkx[lj] = -BREACH_V * 0.6;
-    }
-    for (var k = 0; k < doorCount; k++) {
-      if (doorOpen[k]) { doorAcc[k] = 0; continue; }
-      var d = doorDiv[k], wx = (colX1[d] + colX0[d + 1]) * 0.5, nl = 0, nr = 0, i;
-      var yTop = Math.max(doorY0[k] - RED_R * STACK_DY, BASE_BOTTOM + RED_R * 3), yBot = doorY1[k] + RED_R;
-      for (i = 0; i < redCount; i++) {
-        if (rdead[i]) continue;
-        var y = ry[i]; if (y < yTop || y > yBot) continue;
-        var dx = rx[i] - wx, ad = dx < 0 ? -dx : dx; if (ad > (colX1[d] - colX0[d]) * 0.5 + 6) continue;   // stacked in the lane beside the door
-        var spd = redSpeed * RT_SPEED[rtype[i]]; if (spd > RED_SPEED_CAP) spd = RED_SPEED_CAP;
-        if (rvy[i] > 0.35 * spd) continue;                  // still flowing: not part of the jam
-        if (dx < 0) nl++; else nr++;
-      }
-      var n = nl > nr ? nl : nr;
-      if (n < SPILL_PRESSURE) { doorAcc[k] = 0; continue; }
-      var nn = n > DOOR_PRESSURE_CAP ? DOOR_PRESSURE_CAP : n;
-      var dps = nn >= SURGE_AT ? Math.pow(nn, SURGE_EXP) : nn * DOOR_PRESSURE_K;      // stack surge: >= 5 stacked grinds at n^1.5 HP/s (25 mobs ~ 125/s)
-      var srcL = nl >= nr ? d : d + 1, dstL = nl >= nr ? d + 1 : d;                   // lane pressing on the door -> lane behind it
-      var lvl = (laneN[srcL] + 1) / (laneN[dstL] + 1); lvl = lvl < 0.25 ? 0.25 : (lvl > 2 ? 2 : lvl);   // the emptier neighbour breaks first
-      doorAcc[k] += dt * dps * lvl * (0.8 + 0.4 * Math.random());                     // random tie-break so mirrored doors never favour one side
-      if (doorAcc[k] >= 1) {
-        var u = doorAcc[k] | 0; doorAcc[k] -= u; pressureDmg += u;
-        doorHP[k] -= u; doorFlash[k] = 1; sfxHit();
-        if (doorHP[k] <= 0) breachDoor(k, nl >= nr ? 1 : -1);
+  // Vertical Surge: count touching neighbours per red (uniform grid); a red with SURGE_TOUCH-1 neighbours + itself = 5 touching mobs is a jam.
+  // The whole touching cluster lunges for SURGE_TIME s. Mobs still at the spawn mouth are exempt so a normal pour never self-triggers.
+  function verticalSurge(dt) {
+    var i, j, cols = RG_COLS, rows = RG_ROWS;
+    for (i = 0; i < redCount; i++) { if (rsurge[i] > 0) rsurge[i] -= dt; if (rscd[i] > 0) rscd[i] -= dt; }
+    if (redCount < SURGE_TOUCH) return;
+    surgeClock += dt; if (surgeClock < 0.1) return; surgeClock = 0;
+    buildRedGrid();
+    for (i = 0; i < redCount; i++) rnb[i] = 0;
+    for (i = 0; i < redCount; i++) {
+      if (rdead[i]) continue;
+      var cx = (rx[i] / 24) | 0, cy = (ry[i] / 24) | 0;
+      cx = cx < 0 ? 0 : (cx >= cols ? cols - 1 : cx); cy = cy < 0 ? 0 : (cy >= rows ? rows - 1 : cy);
+      for (var yy = (cy > 0 ? cy - 1 : 0); yy <= (cy < rows - 1 ? cy + 1 : rows - 1); yy++) {
+        for (var xx = (cx > 0 ? cx - 1 : 0); xx <= (cx < cols - 1 ? cx + 1 : cols - 1); xx++) {
+          for (j = rgHead[yy * cols + xx]; j !== -1; j = rgNext[j]) {
+            if (j <= i || rvy[i] > SURGE_JAM_VY || rvy[j] > SURGE_JAM_VY) continue;   // only a STALLED jam counts, free-flowing traffic never surges
+            var dx = rx[j] - rx[i], dy = ry[j] - ry[i], rr = (RT_RAD[rtype[i]] + RT_RAD[rtype[j]]) * SURGE_TOUCH_K;
+            if (dx * dx + dy * dy < rr * rr) { if (rnb[i] < 250) rnb[i]++; if (rnb[j] < 250) rnb[j]++; }
+          }
+        }
       }
     }
+    for (i = 0; i < redCount; i++) {
+      if (rdead[i] || rvy[i] > SURGE_JAM_VY || rnb[i] < SURGE_TOUCH - 1 || rscd[i] > 0 || ry[i] < BASE_BOTTOM + SURGE_MIN_Y) continue;
+      var any = false;
+      for (j = 0; j < redCount; j++) {                                  // the touching cluster around i surges together
+        if (rdead[j] || rscd[j] > 0 || rvy[j] > SURGE_JAM_VY) continue;
+        var ex = rx[j] - rx[i], ey = ry[j] - ry[i], er = (RT_RAD[rtype[i]] + RT_RAD[rtype[j]]) * SURGE_TOUCH_K * 1.0;
+        if (j === i || ex * ex + ey * ey < er * er) { rsurge[j] = SURGE_TIME; rscd[j] = SURGE_TIME + SURGE_CD; any = true; }
+      }
+      if (any) surges++;
+    }
   }
-  function hitDoor(k, side) { doorHP[k]--; doorFlash[k] = 1; sfxHit(); if (doorHP[k] <= 0) breachDoor(k, side); }
 
   function spawnCrate() {
     crateActive = true; crateHP = CRATE_HP;
@@ -1099,11 +1046,10 @@
       pipeStream(dt); threatStream(dt);
       if (!crateActive && level > 2) { crateTimer -= dt; if (crateTimer <= 0) spawnCrate(); }
     }
-    for (k = zoneCount - 1; k >= 0; k--) {          // multiplier zones expire; doors cool their crack flash
+    for (k = zoneCount - 1; k >= 0; k--) {          // multiplier zones expire
       zoneT[k] -= dt;
       if (zoneT[k] <= 0) { zoneCount--; zoneCol[k] = zoneCol[zoneCount]; zoneY[k] = zoneY[zoneCount]; zoneT[k] = zoneT[zoneCount]; }
     }
-    for (k = 0; k < doorCount; k++) if (doorFlash[k] > 0) doorFlash[k] -= dt * 4;
     if (zoneFlash > 0) zoneFlash -= dt * 4;
     if (powerLeft > 0) { powerLeft -= dt; if (powerLeft <= 0) { powerLeft = 0; powerName = ''; setWeapon(Armory[baseWeaponName]); } }
 
@@ -1131,10 +1077,7 @@
         var a = (redCX - x) * BLUE_ATTRACT;
         vx += (a > BLUE_ATTRACT_MAX ? BLUE_ATTRACT_MAX : (a < -BLUE_ATTRACT_MAX ? -BLUE_ATTRACT_MAX : a)) * dt;
       }
-      var bc = colOf(mx[i]), bl = colX0[bc] + MOB_R, br = colX1[bc] - MOB_R;      // blues never leave their column...
-      for (k = 0; k < doorCount; k++) {                                          // ...except through a breached pressure door
-        if (doorOpen[k] && (bc === doorDiv[k] || bc === doorDiv[k] + 1) && y >= doorY0[k] && y <= doorY1[k]) { bl = colX0[doorDiv[k]] + MOB_R; br = colX1[doorDiv[k] + 1] - MOB_R; break; }
-      }
+      var bc = colOf(mx[i]), bl = colX0[bc] + MOB_R, br = colX1[bc] - MOB_R;      // blues never leave the chute
       if (x < bl) { x = bl; vx = -vx; }
       else if (x > br) { x = br; vx = -vx; }
 
@@ -1272,6 +1215,7 @@
     for (i = 0; i < redCount; i++) {
       var rrad = RT_RAD[rtype[i]];
       var rspd = redSpeed * RT_SPEED[rtype[i]]; if (rspd > RED_SPEED_CAP) rspd = RED_SPEED_CAP;
+      if (rsurge[i] > 0) { rspd *= SURGE_SPEED; rkx[i] = 0; rky[i] = 0; }   // Vertical Surge: +50% speed (above the cap) and knockback immunity
       var vyy = rvy[i] + RED_GRAV * dt; if (vyy > rspd) vyy = rspd;
       rpx[i] = rx[i]; rpy[i] = ry[i]; rcr[i] = 0;
       if (rcd[i] > 0) rcd[i] -= dt;
@@ -1309,19 +1253,10 @@
       buildRedGrid();
       for (var it = 0; it < RED_ITERS; it++) {
         separateReds();
-        for (i = 0; i < redCount; i++) {         // barricade tops / lane walls / pressure doors
+        for (i = 0; i < redCount; i++) {         // barricade tops / chute walls
           var rr0 = RT_RAD[rtype[i]], qx2 = rx[i], qy2 = ry[i];
           if (terrainCount && terrainResolve(qx2, qy2, rr0)) { qx2 = pX; qy2 = pY; }   // no sliding: a mob on a barricade simply stops
           var qc = colOf(qx2), cl0 = colX0[qc] + rr0, cl1 = colX1[qc] - rr0;
-          for (k = 0; k < doorCount; k++) {      // a breached door is a gap that both neighbouring lanes can flow through
-            // Directional-bias fix: take the UNION of every open gap this lane touches. The old `break` after the first match made
-            // the lowest-index (left) door win, so a lane with gaps on both sides could only ever flow left.
-            if (doorOpen[k] && (qc === doorDiv[k] || qc === doorDiv[k] + 1) && qy2 >= doorY0[k] && qy2 <= doorY1[k]) {
-              var gl0 = colX0[doorDiv[k]] + rr0, gl1 = colX1[doorDiv[k] + 1] - rr0;
-              if (gl0 < cl0) cl0 = gl0;
-              if (gl1 > cl1) cl1 = gl1;
-            }
-          }
           if (qx2 < cl0) { rcr[i] += cl0 - qx2; rside[i] = -1; qx2 = cl0; }
           else if (qx2 > cl1) { rcr[i] += qx2 - cl1; rside[i] = 1; qx2 = cl1; }
           rx[i] = qx2;
@@ -1331,20 +1266,13 @@
       var idt = dt > 0 ? 1 / dt : 0, dfr = 1 - Math.min(1, dt * 12);   // viscous: sideways velocity bleeds off fast
       for (i = 0; i < redCount; i++) {
         var vxn = (rx[i] - rpx[i]) * idt, vyn = (ry[i] - rpy[i]) * idt;
-        if (rcr[i] > 0 && rcd[i] <= 0 && doorCount) {          // Crush Angle: only heavy lateral pushes hurt a door
-          var pushV = rcr[i] * idt;
-          if (crushHit(pushV, vyn)) {
-            var dk2 = doorAt(colOf(rx[i]), rside[i], ry[i], RT_RAD[rtype[i]]);
-            if (dk2 >= 0) { rcd[i] = CRUSH_CD; hitDoor(dk2, rside[i]); }
-          }
-        }
         vxn = vxn > 140 ? 140 : (vxn < -140 ? -140 : vxn);
         rvx[i] = vxn * dfr;
         rvy[i] = vyn < -40 ? -40 : vyn;
       }
     }
 
-    doorPressure(dt);
+    verticalSurge(dt);
 
     // Boss hovers at the base line, strafing left and right like a moving base
     if (bossActive) {
@@ -1492,27 +1420,6 @@
       ctx.fillStyle = '#121a35'; ctx.fillRect(colX0[ci], BASE_BOTTOM, colX1[ci] - colX0[ci], TRACK_Y - BASE_BOTTOM);
       if (ci === cActive) { ctx.fillStyle = 'rgba(77,163,255,0.07)'; ctx.fillRect(colX0[ci], BASE_BOTTOM, colX1[ci] - colX0[ci], TRACK_Y - BASE_BOTTOM); }
     }
-    ctx.fillStyle = '#5b6483';                          // lane dividers: solid, with pressure doors (HP counters) or breached gaps
-    for (ci = 0; ci < colN - 1; ci++) ctx.fillRect(colX1[ci], BASE_BOTTOM, DIV_W, TRACK_Y - BASE_BOTTOM);
-    for (k = 0; k < doorCount; k++) {
-      var dX = colX1[doorDiv[k]], dY0 = doorY0[k], dH = doorY1[k] - doorY0[k], dr = doorHP[k] / doorMax[k];
-      if (doorOpen[k]) {                                // breached: a gap through the divider
-        ctx.fillStyle = '#121a35'; ctx.fillRect(dX - 1, dY0, DIV_W + 2, dH);
-        ctx.fillStyle = 'rgba(255,170,70,0.6)'; ctx.fillRect(dX - 1, dY0, DIV_W + 2, 2); ctx.fillRect(dX - 1, dY0 + dH - 2, DIV_W + 2, 2);
-        continue;
-      }
-      var dcol = dr > 0.66 ? '#e6c84a' : (dr > 0.33 ? '#f08a2e' : '#e0344a');   // yellow -> orange -> red as it takes damage
-      ctx.fillStyle = dcol; ctx.fillRect(dX - 5, dY0, DIV_W + 10, dH);
-      ctx.fillStyle = doorFlash[k] > 0 ? 'rgba(255,255,255,' + Math.min(0.9, doorFlash[k]) + ')' : 'rgba(0,0,0,0.25)'; ctx.fillRect(dX - 5, dY0, DIV_W + 10, dH);
-      ctx.strokeStyle = 'rgba(30,10,10,0.8)'; ctx.lineWidth = 1.5;
-      var ncrack = dr > 0.66 ? 0 : (dr > 0.33 ? 2 : 4);                           // cracks spread as HP drops
-      for (var ck = 0; ck < ncrack; ck++) {
-        var cy0 = dY0 + (ck + 0.5) * dH / ncrack;
-        ctx.beginPath(); ctx.moveTo(dX - 5, cy0); ctx.lineTo(dX + 1, cy0 + 5); ctx.lineTo(dX - 1, cy0 - 3); ctx.lineTo(dX + DIV_W + 5, cy0 + 4); ctx.stroke();
-      }
-      ctx.fillStyle = '#fff'; ctx.font = '900 14px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(String(doorHP[k]), dX + DIV_W / 2, dY0 + dH / 2);
-    }
     ctx.fillStyle = '#8a93b8';                          // outer walls of the active span (brighter: they are the funnel boundary)
     ctx.fillRect(AX0 - 3, BASE_BOTTOM, 3, TRACK_Y - BASE_BOTTOM); ctx.fillRect(AX1, BASE_BOTTOM, 3, TRACK_Y - BASE_BOTTOM);
     // Danger line at the cannon
@@ -1619,6 +1526,11 @@
         ctx.fill();
       }
     }
+
+    // Vertical Surge: surging mobs glow hot
+    ctx.strokeStyle = '#ffb347'; ctx.lineWidth = 2.5; ctx.beginPath();
+    for (i = 0; i < redCount; i++) if (rsurge[i] > 0) { var sr = RT_RAD[rtype[i]] + 1.5; ctx.moveTo(rx[i] + sr, ry[i]); ctx.arc(rx[i], ry[i], sr, 0, 6.2832); }
+    ctx.stroke();
 
     // Boss (mothership): wide rounded hull
     if (bossActive) {
@@ -1775,9 +1687,7 @@
                  redX: sl.call(rx, 0, redCount), redY: sl.call(ry, 0, redCount), redHP: sl.call(rhp, 0, redCount), redType: sl.call(rtype, 0, redCount),
                  waveQueue: waveQueue, threatQueue: tq[0] + tq[1] + tq[2] + tq[3], tq: Array.prototype.slice.call(tq), crateTimer: crateTimer, terrainCount: terrainCount,
                  cols: colN, colX0: Array.prototype.slice.call(colX0, 0, colN), colX1: Array.prototype.slice.call(colX1, 0, colN), AX0: AX0, AX1: AX1,
-                 doorCount: doorCount, doorHP: Array.prototype.slice.call(doorHP, 0, doorCount), doorMax: Array.prototype.slice.call(doorMax, 0, doorCount), doorDiv: Array.prototype.slice.call(doorDiv, 0, doorCount),
-                 doorY0: Array.prototype.slice.call(doorY0, 0, doorCount), doorY1: Array.prototype.slice.call(doorY1, 0, doorCount), doorOpen: Array.prototype.slice.call(doorOpen, 0, doorCount),
-                 pressureDmg: pressureDmg, zoneCount: zoneCount, zoneCol: Array.prototype.slice.call(zoneCol, 0, zoneCount), zoneY: Array.prototype.slice.call(zoneY, 0, zoneCount), zoneT: Array.prototype.slice.call(zoneT, 0, zoneCount),
+                 surges: surges, surging: (function () { var q = 0; for (var z = 0; z < redCount; z++) if (rsurge[z] > 0) q++; return q; })(), rsurge: Array.prototype.slice.call(rsurge, 0, redCount), zoneCount: zoneCount, zoneCol: Array.prototype.slice.call(zoneCol, 0, zoneCount), zoneY: Array.prototype.slice.call(zoneY, 0, zoneCount), zoneT: Array.prototype.slice.call(zoneT, 0, zoneCount),
                  redVY: Array.prototype.slice.call(rvy, 0, redCount), redVX: Array.prototype.slice.call(rvx, 0, redCount),
                  barr: (function () { var o = []; for (var q = 0; q < terrainCount; q++) o.push({ x: tCX[q], y: tCY[q], hw: tHW[q], hh: tHH[q], type: tType[q], hits: tHits[q] }); return o; })(), crateActive: crateActive, crateX: crateX, crateY: crateY, crateHP: crateHP,
                  pillCount: pillCount, pillX: sl.call(pillX, 0, pillCount), pillY: sl.call(pillY, 0, pillCount), powerName: powerName, powerLeft: powerLeft,
@@ -1792,8 +1702,8 @@
       spawnBoss: spawnBoss, calculateLevelMTM: calculateLevelMTM, tierOf: tierOf, levelThroughput: levelThroughput,
       Armory: Armory, RedMobTypes: RedMobTypes, equip: equip,
       RED_SPEED_CAP: RED_SPEED_CAP, CRATE_HP: CRATE_HP, POWER_TIME: POWER_TIME,
-      setTerrain: setTerrain, setColumns: setColumns, openField: function () { colN = 1; colX0[0] = 10; colX1[0] = W - 10; AX0 = 10; AX1 = W - 10; doorCount = 0; },
-      colOf: colOf, columnCount: columnCount, colSpan: colSpan, DIV_W: DIV_W, DOOR_H: DOOR_H, COL_W: COL_W, crushHit: crushHit, setDoors: function (l) { doorCount = l.length; for (var q = 0; q < doorCount; q++) { doorDiv[q] = l[q][0]; doorY0[q] = l[q][1]; doorY1[q] = l[q][2]; doorHP[q] = doorMax[q] = l[q][3]; doorOpen[q] = 0; } }, spawnZone: function (c, y) { zoneCol[zoneCount] = c; zoneY[zoneCount] = y; zoneT[zoneCount] = ZONE_TIME; zoneCount++; }, ZONE_TIME: ZONE_TIME, redGravity: RED_GRAV, spawnCrate: spawnCrate, spawnPill: function (x, y, t) { spawnPill(x, y); if (t !== undefined) pillT[pillCount - 1] = t; },
+      setTerrain: setTerrain, setColumns: setColumns, openField: function () { colN = 1; colX0[0] = 10; colX1[0] = W - 10; AX0 = 10; AX1 = W - 10; },
+      colOf: colOf, columnCount: columnCount, colSpan: colSpan, DIV_W: DIV_W, COL_W: COL_W, gateRoll: rollGate, spawnZone: function (c, y) { zoneCol[zoneCount] = c; zoneY[zoneCount] = y; zoneT[zoneCount] = ZONE_TIME; zoneCount++; }, ZONE_TIME: ZONE_TIME, redGravity: RED_GRAV, spawnCrate: spawnCrate, spawnPill: function (x, y, t) { spawnPill(x, y); if (t !== undefined) pillT[pillCount - 1] = t; },
       setCrateTimer: function (t) { crateTimer = t; }, queueWave: queueWave,
       clearReds: function () { redCount = 0; waveQueue = 0; for (var q = 0; q < MAX_COLS; q++) { wq[q] = 0; pa[q] = 0; } },
       // Dry-run of one blue launched at x0 (terrain only): returns {x: [...], t: [...]} where it crosses each y in ys (bots use this to aim round terrain)

@@ -167,7 +167,7 @@ for (const n of [1, 12, 20, 30, 45]) {
   const q0 = g.get(), used = new Set(); let inside = true;
   for (let i = 0; i < 60 * 150 && used.size < 1 || i < 600; i++) {
     g.update(1 / 60); const q = g.get();
-    q.redX.forEach((x, k) => { const c = g.colOf(x); used.add(c); if (!q.doorOpen.some(o => o) && (x < q.colX0[c] - 0.01 || x > q.colX1[c] + 0.01)) inside = false; });
+    q.redX.forEach((x, k) => { const c = g.colOf(x); used.add(c); if (true && (x < q.colX0[c] - 0.01 || x > q.colX1[c] + 0.01)) inside = false; });
   }
   ok(inside && used.size >= 1, 'L' + n + ': red waves spawn inside the top of active columns and use ' + used.size + ' of ' + q0.cols + ' columns');
 }
