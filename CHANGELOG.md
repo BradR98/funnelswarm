@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Debug tuning harness (branch `feature/funnel-logic`)
+- **`window.TUNING`** (chuteWidth, mobDensity, mobSpeed, mobRedHP, gateConcurrency, gateXRange, playerDmg, playerBullets), seeded with the L6 numbers. `reset()` re-syncs it to the math of every level that loads (including natural progression, warp and `?level=`), so the sliders physically move.
+- **Floating `#debug-harness` panel** (dark, translucent, z-index 9999, collapsible, top-left over the canvas): one `<input type="range">` per variable with an adjacent live value `<span>`. The "shooter advantage + range" is a read-only `<span>` = `gateXRange - 1`. Pointer and touch events on the panel are stopped so dragging a slider never fires the cannon.
+- **Live (next frame):** `chuteWidth` (`applyChute` re-lays the column, barricade plugs and gate tracks), `playerDmg` (scales red HP removed per hit, probabilistic rounding), `playerBullets` (extra projectiles per trigger).
+- **On "Restart Level":** `mobDensity`, `mobSpeed`, `mobRedHP`, `gateConcurrency` and `gateXRange` (ceiling; the floor keeps the level's proportion) override the level math while the level rebuilds (`tunApply`). Gate concurrency is `min(mob-count tier cap, slider)`.
+- Service worker cache: `mob-swarm-funnel-v9`.
+
 ### Gate concurrency cap + mid-game density squeeze (branch `feature/funnel-logic`)
 - **Gate concurrency cap.** Gates here are sliding rows built at level start (they never "fall"), so the cap works as an activation limit. Gates start dormant (not drawn, no hit test, no motion). One more is activated per frame only while the active count is under the cap, which depends on the live blue-mob count: under 10 mobs gives 1 active gate, 10-24 gives 2, 25+ gives no extra limit. Once active a gate stays active. RNG value math is untouched. Debug: `__mob.get().gatesActive`.
 - **Density tiers shifted** (`densityFor`): L1-2 1.0x, L3 1.5x (was L4), L4-5 1.8x (new bridge tier), L6-9 2.2x (was L7), L10+ 3.5x.

@@ -240,8 +240,17 @@
   // ceiling both rise with the level (L4: x2-x4, L7: x3-x6, L10: x4-x8). 'L' gates (wide, low) favour the bottom of the window, 'H' gates (narrow,
   // high) the top. Values are "messy" fractions (x2.2, +1.5); applyGate rounds them probabilistically so the AVERAGE clone count is exact.
   // Crushed gate ceiling: the single chute can't take big multipliers. x windows by level (linear between anchors, clamped): L4 x1.2-1.8, L7 x1.5-2.4, L10+ x2.0-3.0.
+  // Live-tuning config (driven by the #debug-harness panel). Initial values mirror the Level 6 math; reset() re-syncs them to every level that loads.
+  window.TUNING = { chuteWidth: 96, mobDensity: 2.2, mobSpeed: 160, mobRedHP: 143, gateConcurrency: 2, gateXRange: 2.5, playerDmg: 1.0, playerBullets: 1 };
+  var tunApply = false;      // true only while the harness "Restart Level" button rebuilds the level: level-specific TUNING values then override the level math
+  var tunGateConc = 99;      // max active gates (captured at level start)
   var GATE_WIN = [[4, 1.2, 1.8], [7, 1.5, 2.4], [10, 2.0, 3.0]];
   function gateWin(n) {
+    var w = gateWinBase(n);
+    if (tunApply) { var tr = TUNING.gateXRange / w[1]; return [Math.max(1.1, w[0] * tr), TUNING.gateXRange]; }   // harness: ceiling = slider, floor keeps the level's proportion
+    return w;
+  }
+  function gateWinBase(n) {
     if (n <= GATE_WIN[0][0]) return [GATE_WIN[0][1], GATE_WIN[0][2]];
     for (var q = 1; q < GATE_WIN.length; q++) if (n <= GATE_WIN[q][0]) { var p0 = GATE_WIN[q - 1], p1 = GATE_WIN[q], t = (n - p0[0]) / (p1[0] - p0[0]); return [p0[1] + (p1[1] - p0[1]) * t, p0[2] + (p1[2] - p0[2]) * t]; }
     return [GATE_WIN[GATE_WIN.length - 1][1], GATE_WIN[GATE_WIN.length - 1][2]];
@@ -648,7 +657,7 @@
   // Gate concurrency cap: gates are introduced one at a time. The number of ACTIVE gates is capped by the live blue-mob count
   // (< 10 mobs: 1 gate, 10-24: 2 gates, 25+: no extra limit). A dormant gate is invisible and inert until a slot frees under the cap.
   var gateOn = new Uint8Array(MAX_GATES);
-  function gateCap(nMobs) { return nMobs < 10 ? 1 : (nMobs < 25 ? 2 : 99); }
+  function gateCap(nMobs) { var c = nMobs < 10 ? 1 : (nMobs < 25 ? 2 : 99); return c < tunGateConc ? c : tunGateConc; }
   var blueCX = W / 2, blueN = 0;           // blue centroid from previous frame
   var autoFire = true, spawnerOn = true;   // toggled only by debug hooks
 
@@ -732,6 +741,56 @@
   document.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
   document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
+  // ---------- Debug tuning harness (#debug-harness) ----------
+  function applyChute(w) {                                  // re-lay the single chute at width w: columns, barricade plugs, gate tracks
+    var old = COL_W[1]; if (w === old) return;
+    COL_W[1] = w; setColumns(1);
+    var cx = (colX0[0] + colX1[0]) / 2, k;
+    for (k = 0; k < terrainCount; k++) if (tType[k] !== 255) { tCX[k] = cx; tHW[k] = w / 2; }
+    for (k = 0; k < gateCount; k++) {
+      var G = GATES[k], f = (G.x - G.min) / ((G.max - G.min) || 1);
+      G.w = Math.round(G.w * w / old); G.min = colX0[0]; G.max = colX1[0] - G.w; if (G.max < G.min) G.max = G.min;
+      G.x = G.min + (G.max - G.min) * f;
+    }
+  }
+  var TUNE_DEFS = [   // key, label, min, max, step, live (applies next frame) or needs Restart Level
+    ['chuteWidth', 'Chute width (px)', 56, 200, 2, true], ['mobDensity', 'Mob density (x)', 0.5, 6, 0.1, false],
+    ['mobSpeed', 'Mob speed (px/s)', 40, 400, 5, false], ['mobRedHP', 'Mob base HP', 1, 60, 1, false],
+    ['gateConcurrency', 'Gate concurrency', 1, 6, 1, false], ['gateXRange', 'Gate x max', 1.1, 6, 0.1, false],
+    ['playerDmg', 'Player dmg (x)', 0.5, 5, 0.1, true], ['playerBullets', 'Player bullets', 1, 9, 1, true]
+  ];
+  var tuneEls = {}, tuneLvl = null, tuneAdv = null;
+  (function buildHarness() {
+    var st = document.createElement('style');
+    st.textContent = '#debug-harness{position:absolute;top:58px;left:8px;z-index:9999;width:210px;padding:6px 8px;background:rgba(8,10,20,.82);color:#cfe3ff;font:11px/1.25 system-ui,sans-serif;border:1px solid #3a4a7a;border-radius:8px}' +
+      '#debug-harness .dh-h{display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-bottom:2px}#debug-harness .dh-b{display:none}#debug-harness.open .dh-b{display:block}' +
+      '#debug-harness .dh-r{margin:3px 0}#debug-harness .dh-r div{display:flex;justify-content:space-between}#debug-harness input[type=range]{width:100%;margin:0;height:14px}' +
+      '#debug-harness button{font:700 11px system-ui;padding:3px 8px;border-radius:5px;border:1px solid #5a7acc;background:#1c2a55;color:#fff;cursor:pointer}#debug-harness .dh-live{color:#6f6}#debug-harness .dh-rs{color:#fc6}';
+    document.head.appendChild(st);
+    var box = document.createElement('div'); box.id = 'debug-harness'; box.className = 'open';
+    var hd = document.createElement('div'); hd.className = 'dh-h'; tuneLvl = document.createElement('span'); hd.appendChild(tuneLvl);
+    var tg = document.createElement('button'); tg.textContent = '\u2013'; tg.onclick = function () { box.classList.toggle('open'); tg.textContent = box.classList.contains('open') ? '\u2013' : '+'; }; hd.appendChild(tg); box.appendChild(hd);
+    var body = document.createElement('div'); body.className = 'dh-b'; box.appendChild(body);
+    TUNE_DEFS.forEach(function (d) {
+      var row = document.createElement('div'); row.className = 'dh-r';
+      var top = document.createElement('div'), lab = document.createElement('span'), val = document.createElement('span');
+      lab.innerHTML = d[1] + ' <span class="' + (d[5] ? 'dh-live' : 'dh-rs') + '">' + (d[5] ? '\u25cf live' : '\u21bb restart') + '</span>'; top.appendChild(lab); top.appendChild(val);
+      var inp = document.createElement('input'); inp.type = 'range'; inp.min = d[2]; inp.max = d[3]; inp.step = d[4];
+      inp.oninput = function () { TUNING[d[0]] = parseFloat(inp.value); val.textContent = inp.value; if (d[0] === 'gateXRange') tuneRefresh(); };
+      row.appendChild(top); row.appendChild(inp); body.appendChild(row); tuneEls[d[0]] = { inp: inp, val: val };
+      if (d[0] === 'gateXRange') { var ar = document.createElement('div'); ar.className = 'dh-r'; ar.innerHTML = 'Shooter advantage + range = X \u2212 1: <b></b>'; tuneAdv = ar.lastChild; body.appendChild(ar); }
+    });
+    var rb = document.createElement('button'); rb.textContent = 'Restart Level'; rb.style.marginTop = '4px'; rb.onclick = function () { tunApply = true; try { reset(); } finally { tunApply = false; } };
+    body.appendChild(rb);
+    ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'click'].forEach(function (ev) { box.addEventListener(ev, function (e) { e.stopPropagation(); }); });   // sliders must not fire the cannon or be eaten by the page's touchmove guard
+    (document.getElementById('stage') || document.body).appendChild(box);
+  })();
+  function tuneRefresh() {
+    for (var k in tuneEls) { tuneEls[k].inp.value = TUNING[k]; tuneEls[k].val.textContent = String(Math.round(TUNING[k] * 100) / 100); }
+    if (tuneAdv) tuneAdv.textContent = '+' + (Math.round((TUNING.gateXRange - 1) * 100) / 100);
+    if (tuneLvl) tuneLvl.textContent = 'TUNE \u00b7 Level ' + level;
+  }
+
   // ---------- Game logic ----------
   function loadObstacles(L) {
     var i;
@@ -758,8 +817,10 @@
     bossActive = false; bossMaxHP = L.bossHP; bossHP = L.bossHP; bossHeat = 0;
     cannonHP = CANNON_MAX_HP;
     redHpMul = (!sandbox && level >= 5) ? Math.pow(RED_HP_GROWTH, level - 5) : 1;   // difficulty buff: compounding per level from L5
-    levelDensity = SPAWN_DENSITY * (L.sandbox ? 1 : densityFor(L.n));
+    if (tunApply && !sandbox) redHpMul = TUNING.mobRedHP / RT_HP[0];
+    levelDensity = SPAWN_DENSITY * (L.sandbox ? 1 : (tunApply ? TUNING.mobDensity : densityFor(L.n)));
     redInterval = L.redInterval / levelDensity; waveMin = L.waveMin; waveMax = L.waveMax; redSpeed = RED_SPEED_BASE * L.redSpeedMul + (sandbox ? 0 : level * RED_SPEED_PER_LEVEL); mixTank = L.mixTank; mixSprinter = L.mixSprinter;
+    if (tunApply && !sandbox) redSpeed = TUNING.mobSpeed;
     bossSpeed = BOSS_STRAFE * L.redSpeedMul; bossDir = 1; bossX = (AX0 + AX1) / 2; bossY = BASE_Y + BOSS_H / 2 + 20;
     cannonX = targetX = (AX0 + AX1) / 2;
     bossWave = Math.max(3, Math.min(12, Math.round(L.waveMin * 0.35 * BOSS_WAVE_K))); bossInterval = Math.max(8, 12 - L.tier * 0.2) * BOSS_INT_K;   // smaller waves, slower cadence than any level
@@ -781,6 +842,13 @@
     for (var p = 0; p < POP_MAX; p++) popLife[p] = 0;
     loadObstacles(L);
     overlay.classList.remove('show', 'lose');
+    if (tunApply) { tunGateConc = TUNING.gateConcurrency; if (!sandbox) applyChute(TUNING.chuteWidth); }
+    else if (!sandbox) {                                   // a fresh level: the sliders physically move to this level's math
+      TUNING.chuteWidth = COL_W[1]; TUNING.mobDensity = Math.round(levelDensity * 100) / 100; TUNING.mobSpeed = Math.round(redSpeed);
+      TUNING.mobRedHP = Math.round(RT_HP[0] * redHpMul); TUNING.gateXRange = Math.round(gateWinBase(level)[1] * 10) / 10;
+      TUNING.gateConcurrency = Math.max(1, gateCount); tunGateConc = TUNING.gateConcurrency;
+    }
+    tuneRefresh();
   }
 
   function endGame(newState) {
@@ -1008,6 +1076,7 @@
     if (state !== PLAYING) return;
     var i, k, gi;
     clock += dt;
+    if (!sandbox && TUNING.chuteWidth !== COL_W[1]) applyChute(TUNING.chuteWidth);   // live: chute width follows the slider on the next frame
 
     // Gates slide and bounce; '-' gates recharge
     var gActive = 0, gCap = gateCap(mobCount);
@@ -1034,8 +1103,9 @@
       while (fireAcc >= 1) {
         fireAcc -= 1;
         if ((fireCount++ % 3) === 0) sfxPop();       // every 3rd shot to keep audio light
-        for (var pl = 0; pl < weapon.pellets; pl++) {
-          spawnMob(muzzleX, CANNON_Y - MUZZLE_OFF, (pl - (weapon.pellets - 1) / 2) * weapon.spreadVx + (Math.random() - 0.5) * 2 * (weapon.spread || SPREAD), -MOB_SPEED, 0);
+        var nPel = weapon.pellets + Math.max(1, Math.round(TUNING.playerBullets)) - 1, pSv = weapon.spreadVx || 60;   // live: playerBullets adds projectiles per trigger
+        for (var pl = 0; pl < nPel; pl++) {
+          spawnMob(muzzleX, CANNON_Y - MUZZLE_OFF, (pl - (nPel - 1) / 2) * pSv + (Math.random() - 0.5) * 2 * (weapon.spread || SPREAD), -MOB_SPEED, 0);
         }
       }
     } else if (fireAcc > 1) {
@@ -1322,7 +1392,9 @@
               var dx = mx[b] - rx[r], dy = my[b] - ry[r];
               if (dx * dx + dy * dy <= RT_HIT2[rtype[r]]) {
                 var dmg = bpierce[b] < rhp[r] ? bpierce[b] : rhp[r];     // piercing: one blue subtracts up to `piercing` red HP
-                rhp[r] -= dmg; bpierce[b] -= dmg;
+                var dmgR = dmg * TUNING.playerDmg, dR = Math.floor(dmgR) + (Math.random() < dmgR - Math.floor(dmgR) ? 1 : 0);   // live: playerDmg scales red HP removed (probabilistic rounding)
+                if (dR > rhp[r]) dR = rhp[r];
+                rhp[r] -= dR; bpierce[b] -= dmg;
                 if (bpierce[b] === 0) { bdead[b] = 1; killedBlue++; }
                 if (rhp[r] === 0) { rdead[r] = 1; killedRed++; }   // first hit only wounds (orange)
                 spawnPop((mx[b] + rx[r]) * 0.5, (my[b] + ry[r]) * 0.5);
