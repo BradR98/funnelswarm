@@ -14,7 +14,7 @@ function load(hash, search) {
     document: { getElementById: id => els[id] || (els[id] = el()), addEventListener: noop },
     window: { innerWidth: 360, innerHeight: 640, devicePixelRatio: 2, addEventListener: noop },
     location: { hash, search: search || '' }, performance: { now: () => 0 }, requestAnimationFrame: noop,
-    Math, Float32Array, Uint8Array, Int16Array, Array, JSON,
+    Math, Float32Array, Uint8Array, Uint16Array, Int16Array, Array, JSON,
   };
   sandbox.window.window = sandbox.window;
   vm.createContext(sandbox);

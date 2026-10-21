@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Funnel: track constriction and dead space (branch `feature/funnel-logic`)
+- **Narrower track:** `TRACK_SCALE = 0.72` scales every lane width (120/150/104/80 -> 86/108/75/58px; divider width unchanged), so the packed track is 27-28% narrower: 1 lane 86px, 2 lanes 224px, 3 lanes 238px, 4 lanes 252px (was 120/308/328/344). Lane math (`colSpan`) recalculates from the new widths, so the same lane counts (1/2/3/4) are packed tightly in the centre; gates, barricades, doors, bumpers and the boss scale with the lane. The L99 sandbox keeps its own width.
+- **Dead space:** everything outside the active span `[AX0, AX1]` is drawn as dark amber-hatched margin panels, with brighter funnel walls, replacing the full-width grey bed. The danger line and the HQ bar / HP trail now span only the active track.
+- **Bounds:** nothing can enter the margins. Reds spawn and are clamped inside lane spans, blues clamp to the lane, the cannon clamps to `AX0+10 .. AX1-10`, the boss strafes inside `[AX0, AX1]`, and only blues inside `[AX0, AX1]` can damage the base.
+- Test note: `test/headless.js` now needs `Uint16Array` in its sandbox (added). It currently shows 19 FAILs, all expectations of the original v18 design that the funnel work intentionally changed (column alternation / multi-column dispatch, barricade counts, pour rates, 120px tier-1 lane, etc.); it needs a rewrite before any merge to `main`.
+- Service worker cache `mob-swarm-funnel-v3`.
+
 ### Funnel: density-trap fixes A-C (branch `feature/funnel-logic`)
 - **Diagnosis:** barricades could sit only 25-60px under the spawn mouth (about a third of levels), so the "stack" was the mouth itself: 5 reds counted as a jam, the n^1.5 surge fired and doors broke within 2-4s regardless of play, while fixed-rate spawning stuffed new reds into the overlap.
 - **A, runway floor:** a barricade's top must be at least `BARR_RUNWAY = 140`px below the spawn mouth (skipped if the gates leave no room). Measured over L3-39: min runway 25px -> 140px.

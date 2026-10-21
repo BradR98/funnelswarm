@@ -212,7 +212,8 @@
   var FIELD_TOP = 128, LANE_BOTTOM = 494;                      // terrain lives between the base and the muzzle (shots spawn at 504)
   var GATE_SLOTS = [354, 316, 278, 240];                       // gate rows inside a column, bottom to top (38px apart)
   // ---------- Phase 11: discrete columns (1-4), dividers with trapdoors ----------
-  var COL_W = [0, 120, 150, 104, 80], DIV_W = 8, MAX_COLS = 4, MAX_DOORS = 3, DOOR_H = 56;
+  var TRACK_SCALE = 0.72;   // track constriction: lane widths x0.72, so the packed track is ~27% narrower (dead-space margins fill the rest)
+  var COL_W = [0, 120, 150, 104, 80].map(function (w) { return Math.round(w * TRACK_SCALE); }), DIV_W = 8, MAX_COLS = 4, MAX_DOORS = 3, DOOR_H = 56;
   function columnCount(n) { return n <= 2 ? 1 : (n <= 5 ? 2 : (n <= 9 ? 3 : 4)); }   // Phase 12: L1-2 / 3-5 / 6-9 / 10+
   function colSpan(nc, c) {                                     // [x0, x1] of column c when nc columns are active (centred)
     var cw = COL_W[nc], tot = nc * cw + (nc - 1) * DIV_W, ax0 = (W - tot) / 2, x0 = ax0 + c * (cw + DIV_W);
@@ -263,7 +264,7 @@
   // gate def: [width, y, type, n, label, startRight, speed]
   //   types: 'x' multiply, '+' add, '-' tax (destroys up to n, recharges), '/' halve (destroys every 2nd)
   function generateLevel(n) {
-    COL_W[1] = n === SANDBOX_LEVEL ? SANDBOX_W : 120;
+    COL_W[1] = n === SANDBOX_LEVEL ? SANDBOX_W : Math.round(120 * TRACK_SCALE);
     if (n === SANDBOX_LEVEL) {                       // Phase 15: glass box. One wide column, an indestructible plug at the bottom, nothing else.
       var sx0 = (W - SANDBOX_W) / 2;
       return { n: n, tier: tierOf(n), baseHP: 1e6, mtm: 1, throughput: 0, isBoss: false, bossHP: 0, redInterval: 99, waveMin: 8, waveMax: 12, redSpeedMul: 1,
@@ -1248,7 +1249,7 @@
 
       // Opponent base (on boss levels the base is shielded: it absorbs blues without damage)
       if (y <= BASE_BOTTOM) {
-        if (x >= 10 && x <= W - 10) {
+        if (x >= AX0 && x <= AX1) {   // only the constricted track can reach the base
           if (!isBossLevel) {
             baseHP -= baseHit; baseHeat = baseHeat < 1 ? baseHeat + 0.12 : 1;
             if (baseHP <= 0) { baseHP = 0; killMob(i); endGame(WON); return; }
@@ -1466,14 +1467,25 @@
 
   function fmt(n) { return n >= 1000 ? ((n / 1000) | 0) + ',' + ('00' + (n % 1000)).slice(-3) : '' + n; }
 
+  function drawDeadSpace(x0, x1) {
+    if (x1 - x0 < 1) return;
+    var y0 = BASE_Y, y1 = TRACK_Y;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x0, y0, x1 - x0, y1 - y0); ctx.clip();
+    ctx.fillStyle = '#0d1226'; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.strokeStyle = 'rgba(255,170,70,0.14)'; ctx.lineWidth = 7;
+    for (var sx = x0 - (y1 - y0); sx < x1; sx += 26) { ctx.beginPath(); ctx.moveTo(sx, y1); ctx.lineTo(sx + (y1 - y0), y0); ctx.stroke(); }
+    ctx.restore();
+  }
+
   function render() {
     var i, k;
     ctx = wctx;
     // Background
     ctx.fillStyle = '#0b1020';
     ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#242a40';                          // letterbox: unused screen space is grayed out
-    ctx.fillRect(10, BASE_BOTTOM, W - 20, TRACK_Y - BASE_BOTTOM);
+    // Dead space: the margins outside the constricted track are non-playable. Dark hazard-striped panels make the funnel walls obvious.
+    drawDeadSpace(0, AX0 - 3); drawDeadSpace(AX1 + 3, W);
     ctx.fillStyle = '#121a35';
     var ci, cActive = colOf(cannonX);
     for (ci = 0; ci < colN; ci++) {
@@ -1501,14 +1513,14 @@
       ctx.fillStyle = '#fff'; ctx.font = '900 14px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(String(doorHP[k]), dX + DIV_W / 2, dY0 + dH / 2);
     }
-    ctx.fillStyle = '#5b6483';                          // outer walls of the active span
+    ctx.fillStyle = '#8a93b8';                          // outer walls of the active span (brighter: they are the funnel boundary)
     ctx.fillRect(AX0 - 3, BASE_BOTTOM, 3, TRACK_Y - BASE_BOTTOM); ctx.fillRect(AX1, BASE_BOTTOM, 3, TRACK_Y - BASE_BOTTOM);
     // Danger line at the cannon
     ctx.strokeStyle = 'rgba(255,70,90,0.35)';
     ctx.lineWidth = 1;
     ctx.setLineDash([6, 6]);
     ctx.beginPath();
-    ctx.moveTo(10, CANNON_Y); ctx.lineTo(W - 10, CANNON_Y);
+    ctx.moveTo(AX0, CANNON_Y); ctx.lineTo(AX1, CANNON_Y);
     ctx.stroke();
     ctx.setLineDash([]);
 
@@ -1705,21 +1717,21 @@
     var heatMix = baseHeat * (0.5 + 0.5 * Math.sin(clock * 55));
     var shake = Math.sin(clock * 90) * baseHeat * 2;
     ctx.fillStyle = 'rgb(' + ((216 + 39 * heatMix) | 0) + ',' + ((58 + 80 * heatMix) | 0) + ',' + ((74 + 64 * heatMix) | 0) + ')';
-    roundRect(10 + shake, BY, W - 20, BASE_H, 14);
+    roundRect(AX0 + shake, BY, AX1 - AX0, BASE_H, 14);
     ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.font = '700 28px system-ui, sans-serif';
     ctx.textAlign = 'center';
     var showHP = isBossLevel ? bossHP : baseHP, showMax = isBossLevel ? bossMaxHP : baseMaxHP;
-    ctx.fillText(isBossLevel ? 'BOSS ' + fmt(bossActive ? bossHP : bossMaxHP) : fmt(baseHP) + ' HP', W / 2 + shake, BY + BASE_H / 2 - 6);
+    ctx.fillText(isBossLevel ? 'BOSS ' + fmt(bossActive ? bossHP : bossMaxHP) : fmt(baseHP) + ' HP', (AX0 + AX1) / 2 + shake, BY + BASE_H / 2 - 6);
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(30, BY + BASE_H - 14, W - 60, 6);
+    ctx.fillRect(AX0 + 16, BY + BASE_H - 14, AX1 - AX0 - 32, 6);
     if (!isBossLevel) {
       ctx.fillStyle = '#ffe27a';                       // chip-damage trail
-      ctx.fillRect(30, BY + BASE_H - 14, (W - 60) * (ghostHP / showMax), 6);
+      ctx.fillRect(AX0 + 16, BY + BASE_H - 14, (AX1 - AX0 - 32) * (ghostHP / showMax), 6);
     }
     ctx.fillStyle = isBossLevel ? '#ff9a3c' : '#7dff9a';
-    ctx.fillRect(30, BY + BASE_H - 14, (W - 60) * ((bossActive || !isBossLevel ? showHP : showMax) / showMax), 6);
+    ctx.fillRect(AX0 + 16, BY + BASE_H - 14, (AX1 - AX0 - 32) * ((bossActive || !isBossLevel ? showHP : showMax) / showMax), 6);
 
     // Screen flash when the cannon is hit
     if (cannonFlash > 0) {
