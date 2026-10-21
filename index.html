@@ -775,6 +775,7 @@
     var hd = document.createElement('div'); hd.className = 'dh-h'; tuneLvl = document.createElement('span'); hd.appendChild(tuneLvl);
     var tg = document.createElement('button'); tg.textContent = '\u2013'; tg.onclick = function () { box.classList.toggle('open'); tg.textContent = box.classList.contains('open') ? '\u2013' : '+'; }; hd.appendChild(tg); box.appendChild(hd);
     var body = document.createElement('div'); body.className = 'dh-b'; box.appendChild(body);
+    tuneErrEl = document.createElement('div'); tuneErrEl.style.cssText = 'display:none;color:#ff8080;font-size:10px;word-break:break-all;margin:3px 0'; body.appendChild(tuneErrEl);
     TUNE_DEFS.forEach(function (d) {
       var row = document.createElement('div'); row.className = 'dh-r';
       var top = document.createElement('div'), lab = document.createElement('span'), val = document.createElement('span');
@@ -784,11 +785,11 @@
       row.appendChild(top); row.appendChild(inp); body.appendChild(row); tuneEls[d[0]] = { inp: inp, val: val };
       if (d[0] === 'gateXRange') { var ar = document.createElement('div'); ar.className = 'dh-r'; ar.innerHTML = 'Shooter advantage + range = X \u2212 1: <b></b>'; tuneAdv = ar.lastChild; body.appendChild(ar); }
     });
-    var rb = document.createElement('button'); rb.textContent = 'Restart Level'; rb.style.marginTop = '4px'; rb.onclick = function () { tunApply = true; try { reset(); } finally { tunApply = false; } };
+    var rb = document.createElement('button'); rb.textContent = 'Restart Level'; rb.style.marginTop = '4px'; rb.onclick = function () { tunApply = true; try { reset(); if (tuneErrEl) tuneErrEl.style.display = 'none'; } catch (err) { tuneError(err, 'restart'); } finally { tunApply = false; } };
     body.appendChild(rb);
     var cb = document.createElement('button'); cb.textContent = 'Copy Settings'; cb.style.cssText = 'margin:4px 0 0 6px';
     cb.onclick = function () {                                   // JSON of the level + every tuning value, ready to paste back
-      var o = { level: level }; for (var k in TUNING) o[k] = Math.round(TUNING[k] * 100) / 100;
+      var o = { level: level }; for (var k in TUNING) o[k] = Math.round(TUNING[k] * 100) / 100; if (window.__lastError) o.error = window.__lastError;
       var txt = JSON.stringify(o);
       function done(ok) { cb.textContent = ok ? 'Copied!' : 'Copy failed'; setTimeout(function () { cb.textContent = 'Copy Settings'; }, 1200); }
       function fallback() { var ta = document.createElement('textarea'); ta.value = txt; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta); if (!ok) window.prompt('Copy settings:', txt); done(ok); }
@@ -798,6 +799,12 @@
     ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'click'].forEach(function (ev) { box.addEventListener(ev, function (e) { e.stopPropagation(); }); });   // sliders must not fire the cannon or be eaten by the page's touchmove guard
     (document.getElementById('stage') || document.body).appendChild(box);
   })();
+  var tuneErrEl = null;
+  function tuneError(err, where) {
+    var msg = where + ': ' + (err && err.message ? err.message : err) + ' @ ' + (((err && err.stack) || '').split('\n')[1] || '').trim();
+    window.__lastError = msg;
+    if (tuneErrEl) { tuneErrEl.textContent = msg; tuneErrEl.style.display = 'block'; }
+  }
   function tuneRefresh() {
     for (var k in tuneEls) { tuneEls[k].inp.value = TUNING[k]; tuneEls[k].val.textContent = String(Math.round(TUNING[k] * 100) / 100); }
     if (tuneAdv) tuneAdv.textContent = '+' + (Math.round((TUNING.gateXRange - 1) * 100) / 100);
@@ -1768,8 +1775,8 @@
     var dt = (t - last) / 1000;
     last = t;
     if (dt > MAX_DT) dt = MAX_DT;
-    if (dt > 0) update(dt);
-    render(); renderHud();
+    try { if (dt > 0) update(dt); render(); renderHud(); }
+    catch (err) { tuneError(err, 'frame'); }                  // an exception must never kill the rAF chain (that is what looked like a freeze); it is shown in the tuning panel instead
     rafId = requestAnimationFrame(frame);
   }
   document.addEventListener('visibilitychange', function () { if (document.hidden) setPaused(true); last = performance.now(); });   // backgrounding auto-pauses
