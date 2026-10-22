@@ -101,7 +101,7 @@
       <button id="restart" type="button">Next Level</button>
       <div id="warpRow"><label for="lvlInput">Level</label><input id="lvlInput" type="number" inputmode="numeric" min="1" max="9999" value="1"><button id="warp" type="button">Warp</button></div>
     </div>
-    <span id="ver">funnel v19</span><!-- BUILD LABEL: must match CACHE_NAME in sw.js (funnelswarm-v19); bump both together -->
+    <span id="ver">funnel v20</span><!-- BUILD LABEL: must match CACHE_NAME in sw.js (funnelswarm-v20); bump both together -->
     <button id="pause" type="button" aria-label="Pause game" title="Pause">&#10074;&#10074;</button>
     <button id="mute" type="button" aria-label="Mute audio" title="Mute / unmute">&#128266;</button>
   </div>
@@ -238,7 +238,7 @@
   // high) the top. Values are "messy" fractions (x2.2, +1.5); applyGate rounds them probabilistically so the AVERAGE clone count is exact.
   // Crushed gate ceiling: the single chute can't take big multipliers. x windows by level (linear between anchors, clamped): L4 x1.2-1.8, L7 x1.5-2.4, L10+ x2.0-3.0.
   // Live-tuning config (driven by the #debug-harness panel). Initial values mirror the Level 6 math; reset() re-syncs them to every level that loads.
-  window.TUNING = { chuteWidth: 84, mobDensity: 2.2, mobSpeed: 140, mobRedHP: 1, gateConcurrency: 2, gateXRange: 1.8, playerDmg: 1.0, playerBullets: 1 };
+  var TUNING = window.TUNING = { chuteWidth: 84, mobDensity: 2.2, mobSpeed: 140, mobRedHP: 1, gateConcurrency: 2, gateXRange: 1.8, playerDmg: 1.0, playerBullets: 1 };
   var tunApply = false;      // true only while the harness "Restart Level" button rebuilds the level: level-specific TUNING values then override the level math
   var tunGateConc = 99;      // max active gates (captured at level start)
   var GATE_WIN = [[4, 1.2, 1.8], [7, 1.5, 2.4], [10, 2.0, 3.0]];
@@ -761,6 +761,7 @@
       G.x = G.min + (G.max - G.min) * f;
     }
   }
+  var TUNE_DEFAULT_ON = true;   // FUNNEL/TEST BUILD: panel visible by default. Production (main) sets this to false and shows the panel only with #tune. The panel is to be removed from main entirely later.
   var TUNE_DEFS = [   // key, label, min, max, step, live (applies next frame) or needs Restart Level
     ['chuteWidth', 'Chute width (px)', 56, 200, 2, true], ['mobDensity', 'Mob density (x)', 0.5, 6, 0.1, true],
     ['mobSpeed', 'Mob speed (px/s)', 40, 400, 5, true], ['mobRedHP', 'Mob base HP (new spawns)', 1, 60, 1, true],
@@ -776,6 +777,7 @@
       '#debug-harness button{font:700 11px system-ui;padding:3px 8px;border-radius:5px;border:1px solid #5a7acc;background:#1c2a55;color:#fff;cursor:pointer}#debug-harness .dh-live{color:#6f6}#debug-harness .dh-rs{color:#fc6}';
     document.head.appendChild(st);
     var box = document.createElement('div'); box.id = 'debug-harness'; box.className = 'open';
+    box.style.display = (TUNE_DEFAULT_ON || /(^|[#&?])tune\b/.test(location.hash + location.search)) ? '' : 'none';   // hidden unless this build shows it by default or the URL has #tune
     var hd = document.createElement('div'); hd.className = 'dh-h'; tuneLvl = document.createElement('span'); hd.appendChild(tuneLvl);
     var tg = document.createElement('button'); tg.textContent = '\u2013'; tg.onclick = function () { box.classList.toggle('open'); tg.textContent = box.classList.contains('open') ? '\u2013' : '+'; }; hd.appendChild(tg); box.appendChild(hd);
     var body = document.createElement('div'); body.className = 'dh-b'; box.appendChild(body);

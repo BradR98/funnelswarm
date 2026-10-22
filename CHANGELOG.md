@@ -7,116 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Funnel moved to a new URL: https://bradr98.github.io/funnelswarm/ (branch `feature/funnel-logic`)
-- Root cause of "already installed": Chrome on Android matches an installed app's scope by plain string prefix. The installed original is recorded as `https://bradr98.github.io/mob-swarm` (no trailing slash), and `.../mob-swarm-funnel/` starts with that string, so the funnel was treated as part of the original. The preview repo was renamed `mob-swarm-funnel` -> `funnelswarm` so no URL path begins with another game's path. Manifest id is now `/funnelswarm/`; build label `funnel v19`; cache `funnelswarm-v19`. The old `mob-swarm-funnel` URL no longer exists.
-
-### PWA install diagnostics (branch `feature/funnel-logic`)
-- The tuning panel has a PWA row: it shows whether the browser fired `beforeinstallprompt` (installable and not installed), offers an **Install App** button when it does, and prints the service-worker state plus the live manifest `id`, `scope` and page path. Build label and cache: `funnel v18`.
-
-### PWA install id fix (branch `feature/funnel-logic`)
-- The manifest `id` was `./index.html`. Browsers resolve `id` against the ORIGIN, not the page folder, so every game on bradr98.github.io with that id (original Mob Swarm, Mob Swarm 2, the funnel) shared one identity: installing one made the others report "already installed". The funnel id is now `/mob-swarm-funnel/`, which is unique. Build label and cache: `funnel v17`.
-
-### Funnel PWA icon (branch `feature/funnel-logic`)
-- `icon-192.png` and `icon-512.png` now show an orange funnel (with falling red mobs) on top of the original blue/red target, so the funnel build is distinguishable from the original on a phone home screen. The manifest names are "Mob Swarm Funnel" / "Funnel". Build label and cache: `funnel v16`. Already-installed home-screen shortcuts keep the old icon until removed and re-added.
-
-### Level 7 vetted: two gates from L7 on (branch `feature/funnel-logic`)
-- The vetted L7 export (chute 90, density 2.0, speed 131, HP 1, gate ceiling x1.9, damage 1, bullets 1) already matched the L5-to-L9 ramp, so L8 and later keep following it (L8 87px / 2.1x / 135 / x1.9, L9 as before). The one difference was gate concurrency 2: L7 generated 3 gates. Levels 7 and up now have exactly 2 gates (`maxG`; the harness restart can still pad up to 4 for experiments).
-- Build label and cache: `funnel v15`.
-
-### Level 9 reshape: old L6 tuning moved to L9 (branch `feature/funnel-logic`)
-- The vetted settings (chute 84px, density 2.2x, speed 140, mob HP 1, 2 gates, gate ceiling x1.8, damage 1, bullets 1) now describe **Level 9**. Levels 1-5 are unchanged (verified identical). Levels 6-8 ramp linearly from L5 to L9 via `effLevel` (chute 93/90/87, density 1.9/2.0/2.1, speed 127/131/135). Levels past 9 continue the old curve three levels later (L10 plays like old L7, L13 like old L10).
-- `effLevel(n)` drives difficulty: tier, pour mode and its speed ramp, wave sizes, barricade count and hits, red speed, red HP growth, density and gate windows. The level number, rng seed and boss test (`n % 10`) still use the real level.
-- Gate ceiling at L9 is x1.8 (old L6 window was x2.2): the window is scaled by a factor that ramps 1.0 -> 0.82 from L5 to L9 and stays there. Chute width eases 96 -> 84 over L5-L9 and stays 84. L9+ always has at least 2 gates.
-- Build label and cache: `funnel v14`.
-
-### Consistent build label (branch `feature/funnel-logic`)
-- The on-screen label now reads `funnel v13` and always equals the service-worker cache suffix (`mob-swarm-funnel-v13`). Bump both together on every push. The old `v18 · c18` label belonged to the production build and was stale on this branch.
-
-### Debug tuning harness (branch `feature/funnel-logic`)
-- **`window.TUNING`** (chuteWidth, mobDensity, mobSpeed, mobRedHP, gateConcurrency, gateXRange, playerDmg, playerBullets), seeded with the L6 numbers. `reset()` re-syncs it to the math of every level that loads (including natural progression, warp and `?level=`), so the sliders physically move.
-- **Floating `#debug-harness` panel** (dark, translucent, z-index 9999, collapsible, top-left over the canvas): one `<input type="range">` per variable with an adjacent live value `<span>`. The "shooter advantage + range" is a read-only `<span>` = `gateXRange - 1`. Pointer and touch events on the panel are stopped so dragging a slider never fires the cannon.
-- **Live (next frame):** `chuteWidth` (`applyChute` re-lays the column, barricade plugs and gate tracks), `playerDmg` (scales red HP removed per hit, probabilistic rounding), `playerBullets` (extra projectiles per trigger).
-- **On "Restart Level":** `mobDensity`, `mobSpeed`, `mobRedHP`, `gateConcurrency` and `gateXRange` (ceiling; the floor keeps the level's proportion) override the level math while the level rebuilds (`tunApply`). Gate concurrency is `min(mob-count tier cap, slider)`.
-- **Copy Settings** button: copies one-line JSON of the current level plus every TUNING value, e.g. `{"level":6,"chuteWidth":96,...}`, to the clipboard (with a textarea / prompt fallback).
-- **Harness fix: sliders now change the running game.** Live next frame: chuteWidth, mobDensity (interval and pipe rate rescaled), mobSpeed, mobRedHP (mobs spawned from then on), gateConcurrency, playerDmg, playerBullets. Only gateXRange needs Restart Level because gate values are baked at level build. Restart also pads the level to at least `gateConcurrency` gates (max 4, the number of gate rows) so raising the slider on a one-gate level actually adds gates. Active gates are still limited by the mob-count caps (1 / 2 / unlimited).
-- **Freeze guard.** `frame()` now catches exceptions from update/render so one bad frame can no longer kill the rAF loop (which looks like a freeze until refresh). The message is shown in red inside the panel, stored in `window.__lastError` and included in Copy Settings as `error`. Restart Level is guarded the same way.
-- Service worker cache: `mob-swarm-funnel-v12`.
-
-### Gate concurrency cap + mid-game density squeeze (branch `feature/funnel-logic`)
-- **Gate concurrency cap.** Gates here are sliding rows built at level start (they never "fall"), so the cap works as an activation limit. Gates start dormant (not drawn, no hit test, no motion). One more is activated per frame only while the active count is under the cap, which depends on the live blue-mob count: under 10 mobs gives 1 active gate, 10-24 gives 2, 25+ gives no extra limit. Once active a gate stays active. RNG value math is untouched. Debug: `__mob.get().gatesActive`.
-- **Density tiers shifted** (`densityFor`): L1-2 1.0x, L3 1.5x (was L4), L4-5 1.8x (new bridge tier), L6-9 2.2x (was L7), L10+ 3.5x.
-- Service worker cache: `mob-swarm-funnel-v8`.
-
-### Chute overwhelm: crushed gate ceiling + late-game density tiers (branch `feature/funnel-logic`)
-- **Crushed RNG gate ceiling.** `GATE_NERF` is replaced by explicit windows (`GATE_WIN`, linear between anchors, hard-clamped): `x` gates roll L4 x1.2-1.8, L7 x1.5-2.4, L10+ x2.0-3.0, so the absolute cap is x3.0. `+n` gates make n+1 mobs, so their window is the x window minus 1 (L10+ tops out at +2.0, i.e. x3). Fractional values and probabilistic rounding are unchanged.
-- **Density tiers** (`densityFor`): L1-3 1.0x, L4-6 1.5x, L7-9 2.2x, L10+ 3.5x. These scale the wave interval and the pipe and pour rates. Back-pressure in `emitRed` is unchanged, so overflow waits in the spawn queue (capped by the 1000-mob pool) and the chute packs, which feeds Vertical Surge. Sandbox exempt.
-- Service worker cache: `mob-swarm-funnel-v7`.
-
-### TTK ceiling and HP curve (branch `feature/funnel-logic`)
-- **RNG gate nerf.** New `GATE_NERF = 0.7` scales both the floor and the ceiling of every gate roll, and the guaranteed-multiplier fallback. Measured `x` ranges: L4 x1.4-x2.8, L7 x2.1-x4.2, L10 x2.8-x5.6 (was x2-x4 / x3-x6 / x4-x8). `+` gates scale the same way. Fractional values and probabilistic rounding in `applyGate` are unchanged.
-- **Steeper HP curve.** `RED_HP_GROWTH` goes from 1.10 to 1.15, so red HP = base x 1.15^(level-5) (L7 +32% over L5, L10 about 2x).
-- Service worker cache: `mob-swarm-funnel-v6`.
-
-### Mid-game density step (branch `feature/funnel-logic`)
-- **1.5x density step at Level 4.** Spawn density is now level-gated. Levels 1-3 run at exactly 1.0x. Every level above 3 (`level > 3`) spawns 1.5x: wave interval / 1.5, and pipe and pour rates x1.5. The old global 1.5x is gone, so Levels 1-3 are now 1.0x. The sandbox is exempt.
-- Back-pressure is unchanged: `emitRed` still refuses to spawn inside a pile at the mouth, so extra volume queues instead of overlapping, and the chute packs tightly. That feeds Vertical Surge.
-- Service worker cache: `mob-swarm-funnel-v5`.
-
-### Single-chute pivot: RNG gate drops + Vertical Surge (branch `feature/funnel-logic`)
-- **Multi-lane and spill logic removed.** The board is now exactly ONE 96px vertical chute (`columnCount()` is always 1, `MAX_COLS = 1`). Deleted: lateral spill and fluid-leveling drift, door HP and door pressure (`doorPressure`, `breachDoor`, `hitDoor`, `doorAt`, crush-angle filter), lane dividers and their rendering, the funnel-lane and `funnelBoost` logic, blue barricades and their adjacent-lane threat waves, and the multi-column barricade lane picking. The constricted dead-space margins are kept and now flank the chute. Barricades are gray plugs that each block the whole pipe.
-- **Dynamic RNG gate drops.** The static pools (x2 / +2 low, x3 / +10 high) are replaced by `rollGate(kind, level)`. Each gate rolls inside a window whose floor and ceiling both rise with the level, e.g. L4 x2-x4, L7 x3-x6, L10 x4-x8. `+` gates scale the same way. Low gates favour the bottom of the window and high gates the top. Values are fractional ("messy"), e.g. x2.2 and +1.5. `applyGate` rounds probabilistically, so the average clone count equals the displayed value.
-- **Vertical Surge.** When 5 or more STALLED mobs touch each other in the chute (a real jam, not free-flowing traffic), that touching cluster surges for 1.5 s: +50% fall speed (above the speed cap) and knockback immunity. A 3 s cooldown follows. Surging mobs are drawn with an orange ring. Mobs inside the spawn mouth are exempt. Debug: `__mob.get().surges` / `.surging`.
-- Service worker cache: `mob-swarm-funnel-v4`. The legacy headless suite (v18 lane/door expectations) now aborts at the door tests and needs a rewrite before any merge to `main`.
-
-### Funnel: track constriction and dead space (branch `feature/funnel-logic`)
-- **Narrower track:** `TRACK_SCALE = 0.72` scales every lane width (120/150/104/80 -> 86/108/75/58px; divider width unchanged), so the packed track is 27-28% narrower: 1 lane 86px, 2 lanes 224px, 3 lanes 238px, 4 lanes 252px (was 120/308/328/344). Lane math (`colSpan`) recalculates from the new widths, so the same lane counts (1/2/3/4) are packed tightly in the centre; gates, barricades, doors, bumpers and the boss scale with the lane. The L99 sandbox keeps its own width.
-- **Dead space:** everything outside the active span `[AX0, AX1]` is drawn as dark amber-hatched margin panels, with brighter funnel walls, replacing the full-width grey bed. The danger line and the HQ bar / HP trail now span only the active track.
-- **Bounds:** nothing can enter the margins. Reds spawn and are clamped inside lane spans, blues clamp to the lane, the cannon clamps to `AX0+10 .. AX1-10`, the boss strafes inside `[AX0, AX1]`, and only blues inside `[AX0, AX1]` can damage the base.
-- Test note: `test/headless.js` now needs `Uint16Array` in its sandbox (added). It currently shows 19 FAILs, all expectations of the original v18 design that the funnel work intentionally changed (column alternation / multi-column dispatch, barricade counts, pour rates, 120px tier-1 lane, etc.); it needs a rewrite before any merge to `main`.
-- Service worker cache `mob-swarm-funnel-v3`.
-
-### Funnel: density-trap fixes A-C (branch `feature/funnel-logic`)
-- **Diagnosis:** barricades could sit only 25-60px under the spawn mouth (about a third of levels), so the "stack" was the mouth itself: 5 reds counted as a jam, the n^1.5 surge fired and doors broke within 2-4s regardless of play, while fixed-rate spawning stuffed new reds into the overlap.
-- **A, runway floor:** a barricade's top must be at least `BARR_RUNWAY = 140`px below the spawn mouth (skipped if the gates leave no room). Measured over L3-39: min runway 25px -> 140px.
-- **B, emission back-pressure:** `emitRed` now tries 3 spawn positions and spawns only into a clear spot (no red within 0.9x the summed radii); otherwise the wave / threat queue waits. Mouth overlap pairs fall to ~0. To recover the throughput this costs, the spawn mouth half-width cap went 24 -> `MOUTH_HALF = 44`. Net L6 steady-state on-board reds ~150 vs ~215 before (~70%), a deliberate trade for real, physical stacks.
-- **C, mouth excluded from pressure:** door-pressure counting starts at `BASE_BOTTOM + 3 bodies`, so reds still leaving the mouth never count as jam pressure.
-- Doors still break once and stay open (option D, re-arming doors, declined).
-- Service worker cache `mob-swarm-funnel-v2`.
-
-### Funnel: TTK baseline and HP flattening (branch `feature/funnel-logic`)
-- **Base HP halved:** the HQ's starting HP is now `L.baseHP x BASE_HP_SCALE (0.5)` on every non-sandbox level, so the 1x starter cannon clears the funnel with the friction the 2x gave (L1 250 -> 125; sampled L2 128, L5 875, L9 1088, L12 1109). Red mobs themselves have 1-3 HP at base so cannot be halved: this is the HQ base HP ("Level 1 Base HP"). Boss HP, `BASE_HIT` and the sandbox are untouched.
-- **HP curve flattened:** `RED_HP_GROWTH` 1.25 -> 1.10, so red HP = `RT_HP x 1.10^(level-5)` from L5 (L7 = +21% over L5, was +56%; L12 = x1.95). Density multiplier untouched.
-- **Density cap verified and one leak fixed:** `SPAWN_DENSITY` is a constant 1.5 (wave interval / 1.5, pipe, threat and pour rates x1.5), not a per-level ramp. Audit found the pipe `funnelBoost` (x2 on 3+ lane boards) was also being applied to the endless pour on L3-8, where `pipeRate` is already the whole-board rate: that made those levels ~3x (2x boost x 1.5) instead of 1.5x. The boost now applies only to non-pour waves (matching the old 2-lane dispatch) and no longer to threat streams. The per-level wave-interval / wave-size ramps from the original generator are unchanged.
-- Service worker cache renamed `mob-swarm-funnel-v1` so this build can be hosted beside production on the same GitHub Pages origin without sharing a cache.
-
-### Funnel: flow, flatten, lethality (branch `feature/funnel-logic`)
-- **Directional bias fixed (fluid leveling):** root cause was the lane clamp in the red solver: with open gaps on both sides of a lane it did `break` after the first matching door, so the lowest-index (left) door always won and a funnel lane could only ever flow left. It now takes the union of every open gap the lane touches. On top of that, stalled reds beside a breached door drift through it; with gaps on both sides they pick the emptier lane (probability tilts with the stack-height difference, equal lanes = fair coin), and door grind damage is weighted by the same lane-height ratio (0.25x-2x, +/-20% random tie-break) so the emptier neighbour breaks first. Headless L6 lane counts went from 335/296/0 (left-only) to ~111/190/138.
-- **HP curve:** the 1.5 growth was first flattened to 1.15 and then, per the lethality blueprint, set to the final `RED_HP_GROWTH = 1.25` (red HP = `RT_HP x 1.25^(level-5)` from L5, cap 60000). L6/L9/L12 sampled max red HP: 4 / 7 / 14.
-- **Speed scaling:** descent is now `RED_SPEED_BASE (122) x tier multiplier + level x 6` px/s (sandbox exempt), so L12 closes ~40px/s faster than L5. `RED_SPEED_CAP` raised 182 -> 260 so the ramp has headroom.
-- **Stack surge:** door grind damage is `n` HP/s below 5 stacked reds and `n^1.5` HP/s at 5+, with the stack capped at 25 (25 reds = 125 HP/s). A full jam shatters a 125-250 HP door in roughly 1-2s (L6 doors broke ~1.6s after the jam formed, L12 ~3.3s) and floods the outer lanes.
-- Balance note: base HP / TTK still untuned for the new speed, HP and density.
-
-### Funnel: door pressure, HP and density (branch `feature/funnel-logic`)
-- **Spill now requires a breach (pressure = damage):** the instant lane-hopping is removed (`trySpill` / `pressureAbove` / burst code deleted). `doorPressure(dt)` finds stalled reds (falling at < 35% of speed) stacked against a closed door; once 3+ are jammed it subtracts `1 HP/s per stacked mob` (capped at 20 mobs) from that door's HP counter, so the number drawn on the door counts down with the pile. At 0 the existing `breachDoor` fires and the pressurised stack is kicked through the gap: the only lateral spill left. Crush-angle lateral damage still applies as before.
-- **Doors on every divider** (removed the 20% skip), so any lane's jam always has a counter to grind. Funnel lane is now fixed (`colN >> 1`: middle lane on odd boards, just right of centre on even), which is also where the first barricade lands, so the jam forms over a door.
-- **Mob HP scaling:** from L5, red HP = `RT_HP x 1.5^(level-5)` (L6 x1.5, L9 x5, L12 x17, capped at 60000; L99 sandbox exempt). `rhp` widened to `Uint16`; new `rmax` per mob keeps wound colouring correct. Boss HP unchanged.
-- **Spawn density +50%** (`SPAWN_DENSITY = 1.5`): wave interval / 1.5, pipe rate 28 -> 42/s, threat rate 14 -> 21/s, endless-pour rate x1.5.
-- Headless check (cannon invincible, no fire): 100% spawns in the funnel lane; doors open after 4-8s of pile pressure (L6 doors 126/128 HP, L12 140/134/145), then the pile pours into the outer lanes; max red HP by level 6/9/12 = 5/15/51; no page errors. `__mob.get()` reports `pressureDmg`.
-- Balance warning: the x1.5 compounding makes the x2 gun inadequate by ~L9 as intended, but by L15+ reds carry 100+ HP; base HP / TTK are not retuned.
-
-### Funnel tuning: speed and pressure (branch `feature/funnel-logic`)
-- **Slower descent:** `RED_SPEED_BASE` 187.5 -> 122 px/s and `RED_SPEED_CAP` 280 -> 182 (both -35%), so the player has time to carve the centre funnel before the stream reaches the cannon line. `PIPE_RATE` is unchanged, so the slower stream is denser.
-- **Fewer barricades:** count per level is now `0` on L1-2, then `1 + floor((n-3)/8)` capped at 6 (was `n-1` on L1-2, then `2 + floor((n-3)/4)` capped at 12), i.e. roughly half or fewer at every level. Minimum height gap between any two barricades raised 54 -> 90px. The lane dividers and pressure doors are now the main friction. Blue-barricade threat streams scale down with the count.
-- **Door-busting pressure:** a stalled red now spills only if at least `SPILL_PRESSURE = 3` reds are stacked within ~3 bodies above/behind it (`pressureAbove()`). When one breaches, the stalled mobs packed right behind it in the same lane are released on the next frames, so a jam bursts outward in a surge instead of a steady trickle. If the jam is smaller than 3 the mob waits.
-- Headless check (L6/L12/L22, invincible cannon, not firing): spawns 100% centre lane(s); 460-810 spills per 40s; outer lanes still fill in bursts; no page errors. `__mob.get()` now also reports `bursts`.
-- Balance note: base HP / TTK constants still assume the old speed and spread; a rebalance pass is still needed.
-
-### Funnel logic (branch `feature/funnel-logic`, not yet on `main`)
-- **Single-column spawn:** every red wave, threat-budget stream and endless-pour red now leaves the base from the centre lane only (odd lane counts: the middle lane; even counts: one of the two middle lanes, alternating per wave). The old multi-lane dispatch (`waveCursor` / `spread`) is gone. The single pipe carries the old combined rate (`funnelBoost` x2 on 3+ lanes; the pour rate is no longer divided by lane count).
-- **Spill (lateral overflow):** a red whose fall speed drops below 25% of normal for 0.22s (blocked by a barricade or the mob below) checks the space beside it. If the adjacent lane has room at its height it hops over the divider and resumes falling; if both sides are full it retries after 0.12s; 0.6s cooldown per mob stops ping-pong. A backed-up centre lane now pours outward into the other lanes and chains across the board.
-- **Barricades:** the first barricade always lands in the centre lane (3+ lanes); no two barricades share a height band (54px stagger, so no flat row across the lanes); the generator never plugs every lane, so at least one stays open for the spill.
-- Headless check (cannon invincible, not firing, L6/L12/L22): 100% of spawns in the centre lane(s); 570-920 spills per 40s; the piles fill the outer lanes (e.g. L6 lane counts 111/161/26 at 12s). No page errors. `__mob.get().spills` exposes the counter in `#debug`.
-- Balance note: base HP / TTK constants were tuned for the old spread dispatch and are untouched; expect a rebalance pass.
+### Phase 19 - single chute / funnel (main: v19 / c21; funnel test build: funnel v20)
+Consolidates the funnel branch experiments (detailed per-step history lives in git).
+- **One 96px chute** replaces the 1-4 column board: no dividers, lanes, pressure doors, multiplier zones, trapdoors, spill or threat budget. Reds fall from a centre mouth; the chute narrows 96 -> 84px over L5-9. Dead code for all of those was swept out; the column arrays (`MAX_COLS = 1`) remain only because the L99 sandbox uses them, and blue barricades are retired (generator forces gray/red).
+- **RNG gate drops**: gate values are rolled per gate (`rollGate`) inside a level window (`gateWinBase`): L4-5 x1.2-1.8, ramping to x1.8 at L9 (window factor 1.0 -> 0.82), L10+ never above x3.0; '+' gates = window - 1. From L7 there are exactly 2 positive gates.
+- **Gate concurrency cap** by blue count (`gateOn`/`gateCap`: 1 / 2 / unlimited) so the chute cannot be flooded by every gate at once.
+- **Vertical Surge**: 5+ stalled touching mobs in a pile-up get +50% speed and 1.5 s knockback immunity (3 s cooldown). Only fires on barricade pile-ups (L3+).
+- **Density tiers** (`densityFor`/`densityTier`): 1.0 on L1-2, 1.5 on L3, 1.8 on L4-5, ramp to 2.2 at L9, then per-tier. Red HP grows x1.15 per level from L5 (rounds away until ~L8).
+- **Level 9 reshape (`effLevel`)**: the vetted settings (chute 84, density 2.2, speed 140, HP 1, 2 gates, ceiling x1.8, damage 1, bullets 1) are Level 9. L1-5 unchanged, L6-8 ramp, L10+ follow the old curve shifted +3 (unvetted).
+- **Tuning harness** (`window.TUNING`, `#debug-harness` panel, Copy Settings, PWA install diagnostics). **Hidden by default on `main`** (`TUNE_DEFAULT_ON = false`; show with `#tune`); visible by default on the funnel test build, which stays the testing environment. To be removed from `main` later.
+- **PWA**: manifest `id` is now the app's own path (`/mob-swarm/`; funnel `/funnelswarm/`) instead of `./index.html`, which collided across games on bradr98.github.io. Funnel build lives at https://bradr98.github.io/funnelswarm/ with a funnel icon and its own name. `main` gained an "Install app" pill (`beforeinstallprompt`).
+- **Tests**: `test/headless.js` rewritten for the single chute (column/door/zone/threat tests removed; gate windows, chute width, gate count and effLevel-shifted tier checks added); runs in a stubbed DOM (163 checks).
+- Known gaps: levels 10+ are shifted old curves and unvetted; the pour/sandbox spawn is blocked when crowded (L99 piles ~270 reds vs ~700 before); build label `v19 · c21` on `main`, `funnel vNN` on the test build.
 
 ### Phase 15 - soft collisions and the L99 physics sandbox
 - **Soft collisions:** the rigid separation (90% of an overlap per pass) is replaced by over-relaxed "soft resolving": ~20% of a light overlap per frame (3 passes of RED_SOFT/3), ramping up only for deep overlaps (> 55% of a body) so a pile compresses and flows like mud but cannot collapse into a blob. Sideways velocity also bleeds off faster (viscous).
