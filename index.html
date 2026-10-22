@@ -101,7 +101,7 @@
       <button id="restart" type="button">Next Level</button>
       <div id="warpRow"><label for="lvlInput">Level</label><input id="lvlInput" type="number" inputmode="numeric" min="1" max="9999" value="1"><button id="warp" type="button">Warp</button></div>
     </div>
-    <span id="ver">funnel v14</span><!-- BUILD LABEL: must match CACHE_NAME in sw.js (mob-swarm-funnel-v14); bump both together -->
+    <span id="ver">funnel v15</span><!-- BUILD LABEL: must match CACHE_NAME in sw.js (mob-swarm-funnel-v15); bump both together -->
     <button id="pause" type="button" aria-label="Pause game" title="Pause">&#10074;&#10074;</button>
     <button id="mute" type="button" aria-label="Mute audio" title="Mute / unmute">&#128266;</button>
   </div>
@@ -338,12 +338,13 @@
       if (nc <= 2 && n > 2 && rnd() < 0.3) sq.unshift('L');
       seqs.push(sq); total += sq.length;
     }
-    if (n >= 9 && total < 2 && nc > 0) { seqs[0].push(seqs[0].indexOf('H') < 0 ? 'H' : 'L'); total++; }   // L9+: at least two gates (gate concurrency 2)
+    if (n >= 7 && total < 2 && nc > 0) { seqs[0].push(seqs[0].indexOf('H') < 0 ? 'H' : 'L'); total++; }   // L7+: at least two gates (gate concurrency 2)
     if (tunApply) {                                      // harness restart: guarantee at least `gateConcurrency` gates exist so the concurrency slider has something to activate
       var want = Math.min(GATE_SLOTS.length, MAX_GATES, Math.round(TUNING.gateConcurrency)), pc = 0;
       while (total < want && nc > 0) { seqs[0].push(pc++ & 1 ? 'H' : 'L'); total++; }
     }
-    while (total > MAX_GATES) {                         // gate bits are limited: trim extras from the longest column
+    var maxG = (n >= 7 && !tunApply) ? 2 : MAX_GATES;                  // L7+: exactly two gates on the field (vetted gate concurrency 2)
+    while (total > maxG) {                         // gate bits are limited: trim extras from the longest column
       var li = 0; for (c = 1; c < nc; c++) if (seqs[c].length >= seqs[li].length) li = c;
       var s2 = seqs[li], k2 = s2.indexOf('L') !== s2.lastIndexOf('L') ? s2.lastIndexOf('L') : (s2.indexOf('N') >= 0 ? s2.indexOf('N') : s2.indexOf('H'));
       s2.splice(k2, 1); total--;

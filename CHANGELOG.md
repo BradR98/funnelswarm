@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Level 7 vetted: two gates from L7 on (branch `feature/funnel-logic`)
+- The vetted L7 export (chute 90, density 2.0, speed 131, HP 1, gate ceiling x1.9, damage 1, bullets 1) already matched the L5-to-L9 ramp, so L8 and later keep following it (L8 87px / 2.1x / 135 / x1.9, L9 as before). The one difference was gate concurrency 2: L7 generated 3 gates. Levels 7 and up now have exactly 2 gates (`maxG`; the harness restart can still pad up to 4 for experiments).
+- Build label and cache: `funnel v15`.
+
 ### Level 9 reshape: old L6 tuning moved to L9 (branch `feature/funnel-logic`)
 - The vetted settings (chute 84px, density 2.2x, speed 140, mob HP 1, 2 gates, gate ceiling x1.8, damage 1, bullets 1) now describe **Level 9**. Levels 1-5 are unchanged (verified identical). Levels 6-8 ramp linearly from L5 to L9 via `effLevel` (chute 93/90/87, density 1.9/2.0/2.1, speed 127/131/135). Levels past 9 continue the old curve three levels later (L10 plays like old L7, L13 like old L10).
 - `effLevel(n)` drives difficulty: tier, pour mode and its speed ramp, wave sizes, barricade count and hits, red speed, red HP growth, density and gate windows. The level number, rng seed and boss test (`n % 10`) still use the real level.
