@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Consistent build label (branch `feature/funnel-logic`)
+- The on-screen label now reads `funnel v13` and always equals the service-worker cache suffix (`mob-swarm-funnel-v13`). Bump both together on every push. The old `v18 · c18` label belonged to the production build and was stale on this branch.
+
 ### Debug tuning harness (branch `feature/funnel-logic`)
 - **`window.TUNING`** (chuteWidth, mobDensity, mobSpeed, mobRedHP, gateConcurrency, gateXRange, playerDmg, playerBullets), seeded with the L6 numbers. `reset()` re-syncs it to the math of every level that loads (including natural progression, warp and `?level=`), so the sliders physically move.
 - **Floating `#debug-harness` panel** (dark, translucent, z-index 9999, collapsible, top-left over the canvas): one `<input type="range">` per variable with an adjacent live value `<span>`. The "shooter advantage + range" is a read-only `<span>` = `gateXRange - 1`. Pointer and touch events on the panel are stopped so dragging a slider never fires the cannon.
