@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Level 9 reshape: old L6 tuning moved to L9 (branch `feature/funnel-logic`)
+- The vetted settings (chute 84px, density 2.2x, speed 140, mob HP 1, 2 gates, gate ceiling x1.8, damage 1, bullets 1) now describe **Level 9**. Levels 1-5 are unchanged (verified identical). Levels 6-8 ramp linearly from L5 to L9 via `effLevel` (chute 93/90/87, density 1.9/2.0/2.1, speed 127/131/135). Levels past 9 continue the old curve three levels later (L10 plays like old L7, L13 like old L10).
+- `effLevel(n)` drives difficulty: tier, pour mode and its speed ramp, wave sizes, barricade count and hits, red speed, red HP growth, density and gate windows. The level number, rng seed and boss test (`n % 10`) still use the real level.
+- Gate ceiling at L9 is x1.8 (old L6 window was x2.2): the window is scaled by a factor that ramps 1.0 -> 0.82 from L5 to L9 and stays there. Chute width eases 96 -> 84 over L5-L9 and stays 84. L9+ always has at least 2 gates.
+- Build label and cache: `funnel v14`.
+
 ### Consistent build label (branch `feature/funnel-logic`)
 - The on-screen label now reads `funnel v13` and always equals the service-worker cache suffix (`mob-swarm-funnel-v13`). Bump both together on every push. The old `v18 · c18` label belonged to the production build and was stale on this branch.
 

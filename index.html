@@ -101,7 +101,7 @@
       <button id="restart" type="button">Next Level</button>
       <div id="warpRow"><label for="lvlInput">Level</label><input id="lvlInput" type="number" inputmode="numeric" min="1" max="9999" value="1"><button id="warp" type="button">Warp</button></div>
     </div>
-    <span id="ver">funnel v13</span><!-- BUILD LABEL: must match CACHE_NAME in sw.js (mob-swarm-funnel-v13); bump both together -->
+    <span id="ver">funnel v14</span><!-- BUILD LABEL: must match CACHE_NAME in sw.js (mob-swarm-funnel-v14); bump both together -->
     <button id="pause" type="button" aria-label="Pause game" title="Pause">&#10074;&#10074;</button>
     <button id="mute" type="button" aria-label="Mute audio" title="Mute / unmute">&#128266;</button>
   </div>
@@ -184,7 +184,8 @@
   var MOUTH_HALF = 44;                    // spawn mouth half-width cap (was 24): a wider mouth restores the throughput that back-pressure costs
   var BARR_RUNWAY = 140;                  // min free height between the spawn mouth and a barricade top
   var SPAWN_DENSITY = 1.0, DENSITY_STEP = 1.5, DENSITY_STEP_LEVEL = 3, levelDensity = 1;
-  function densityFor(n) { return n >= 10 ? 3.5 : (n >= 6 ? 2.2 : (n >= 4 ? 1.8 : (n >= 3 ? 1.5 : 1))); }   // tiers: L1-2 1.0x, L3 1.5x, L4-5 1.8x, L6-9 2.2x, L10+ 3.5x
+  function densityFor(n) { var m = effLevel(n), lo = Math.floor(m), f = m - lo, a = densityTier(lo); return f ? a + (densityTier(lo + 1) - a) * f : a; }   // continuous through the L5 -> L9 ramp (L9 = 2.2x)
+  function densityTier(n) { return n >= 10 ? 3.5 : (n >= 6 ? 2.2 : (n >= 4 ? 1.8 : (n >= 3 ? 1.5 : 1))); }   // tiers on the remapped level: L1-2 1.0x, L3 1.5x, L4-5 1.8x, L6+ 2.2x, L10+ 3.5x
   // density step: L1-3 run at 1.0x; every level above 3 spawns 1.5x (wave interval / 1.5; pipe and pour rates x1.5)
   var THREAT_K = 1.0, THREAT_MIN = 8, THREAT_MAX = 24, THREAT_DELAY = 10, THREAT_RATE = 14 * SPAWN_DENSITY;   // threat budget: red wave size = THREAT_K x the blue barricade's hits
   var MAX_TERRAIN = 12, SLIDE_MIN = 70, RED_SLIDE = 90;   // min tangential slide speed so mobs never stall on a flat face
@@ -241,7 +242,7 @@
   // high) the top. Values are "messy" fractions (x2.2, +1.5); applyGate rounds them probabilistically so the AVERAGE clone count is exact.
   // Crushed gate ceiling: the single chute can't take big multipliers. x windows by level (linear between anchors, clamped): L4 x1.2-1.8, L7 x1.5-2.4, L10+ x2.0-3.0.
   // Live-tuning config (driven by the #debug-harness panel). Initial values mirror the Level 6 math; reset() re-syncs them to every level that loads.
-  window.TUNING = { chuteWidth: 96, mobDensity: 2.2, mobSpeed: 160, mobRedHP: 143, gateConcurrency: 2, gateXRange: 2.5, playerDmg: 1.0, playerBullets: 1 };
+  window.TUNING = { chuteWidth: 84, mobDensity: 2.2, mobSpeed: 140, mobRedHP: 1, gateConcurrency: 2, gateXRange: 1.8, playerDmg: 1.0, playerBullets: 1 };
   var tunApply = false;      // true only while the harness "Restart Level" button rebuilds the level: level-specific TUNING values then override the level math
   var tunGateConc = 99;      // max active gates (captured at level start)
   var GATE_WIN = [[4, 1.2, 1.8], [7, 1.5, 2.4], [10, 2.0, 3.0]];
@@ -250,7 +251,17 @@
     if (tunApply) { var tr = TUNING.gateXRange / w[1]; return [Math.max(1.1, w[0] * tr), TUNING.gateXRange]; }   // harness: ceiling = slider, floor keeps the level's proportion
     return w;
   }
+  // LEVEL 9 RESHAPE: the old Level 6 tuning (user-vetted via the harness) now lives at Level 9. Levels 1-5 are untouched, 6-8 ramp from L5 to the new L9,
+  // and every level past 9 continues the old curve three levels later (L10 plays like old L7, L13 like old L10). `effLevel` is that remap.
+  var L9_CHUTE = 84, L9_GATE_K = 1.8 / 2.2;   // L9 chute width; L9 gate ceiling x1.8 (old L6 window said x2.2)
+  function effLevel(n) { return n <= 5 ? n : (n <= 9 ? 5 + (n - 5) / 4 : n - 3); }
+  function rampK(n) { return n <= 5 ? 0 : (n >= 9 ? 1 : (n - 5) / 4); }                       // 0 at L5 -> 1 at L9
+  function chuteFor(n) { return Math.round(CHUTE_W + (L9_CHUTE - CHUTE_W) * rampK(n)); }       // 96 -> 84
   function gateWinBase(n) {
+    var k = 1 + (L9_GATE_K - 1) * rampK(n), w = gateWinRaw(effLevel(n));
+    return [w[0] * k, w[1] * k];
+  }
+  function gateWinRaw(n) {
     if (n <= GATE_WIN[0][0]) return [GATE_WIN[0][1], GATE_WIN[0][2]];
     for (var q = 1; q < GATE_WIN.length; q++) if (n <= GATE_WIN[q][0]) { var p0 = GATE_WIN[q - 1], p1 = GATE_WIN[q], t = (n - p0[0]) / (p1[0] - p0[0]); return [p0[1] + (p1[1] - p0[1]) * t, p0[2] + (p1[2] - p0[2]) * t]; }
     return [GATE_WIN[GATE_WIN.length - 1][1], GATE_WIN[GATE_WIN.length - 1][2]];
@@ -287,7 +298,7 @@
   // gate def: [width, y, type, n, label, startRight, speed]
   //   types: 'x' multiply, '+' add, '-' tax (destroys up to n, recharges), '/' halve (destroys every 2nd)
   function generateLevel(n) {
-    COL_W[1] = n === SANDBOX_LEVEL ? SANDBOX_W : CHUTE_W;
+    COL_W[1] = n === SANDBOX_LEVEL ? SANDBOX_W : chuteFor(n);
     if (n === SANDBOX_LEVEL) {                       // Phase 15: glass box. One wide column, an indestructible plug at the bottom, nothing else.
       var sx0 = (W - SANDBOX_W) / 2;
       return { n: n, tier: tierOf(n), baseHP: 1e6, mtm: 1, throughput: 0, isBoss: false, bossHP: 0, redInterval: 99, waveMin: 8, waveMax: 12, redSpeedMul: 1,
@@ -296,7 +307,8 @@
     }
     var rnd = rng32(n * 7919 + 12345);
     var isBoss = (n % 10) === 0;
-    var tier = tierOf(n), tf = (tier - 1) * TIER_SIZE + 1;     // tier constants are those of the tier's first level
+    var m = effLevel(n);                                       // difficulty level (see effLevel); n stays the level number / seed / boss test
+    var tier = tierOf(m), tf = (tier - 1) * TIER_SIZE + 1;     // tier constants are those of the tier's first level
     var wMin = Math.min(MAX_WAVE, 8 + (tf - 1));
     var wMax = Math.min(MAX_WAVE, 12 + 2 * (tf - 1));
     var L = {
@@ -306,10 +318,10 @@
       bossHP: 0,
       redInterval: Math.max(2.5, 5.0 * Math.pow(0.98, tf - 1)),
       waveMin: wMin, waveMax: Math.max(wMin, wMax),
-      pour: (n <= POUR_MAX_LEVEL && !isBoss) ? POUR_N : 0,          // total reds in the single sustained wave
-      pourRate: POUR_RATE * Math.pow(1 + ATTRITION, n - 1),   // Phase 17 attrition: the pour compounds +2%/level against a flat per-level weapon curve
+      pour: (m <= POUR_MAX_LEVEL && !isBoss) ? POUR_N : 0,          // total reds in the single sustained wave
+      pourRate: POUR_RATE * Math.pow(1 + ATTRITION, m - 1),   // Phase 17 attrition: the pour compounds +2%/level against a flat per-level weapon curve
       baseHit: 1,                                                      // reds/s leaving the pipes (all columns together)
-      redSpeedMul: (1 + Math.min(0.25, (tf - 1) * 0.005)) * ((n <= POUR_MAX_LEVEL && !isBoss) ? POUR_SPEED0 + (1 - POUR_SPEED0) * (n - 1) / (POUR_MAX_LEVEL - 1) : 1),   // speed growth is capped; density and shields carry late game
+      redSpeedMul: (1 + Math.min(0.25, (tf - 1) * 0.005)) * ((m <= POUR_MAX_LEVEL && !isBoss) ? POUR_SPEED0 + (1 - POUR_SPEED0) * (m - 1) / (POUR_MAX_LEVEL - 1) : 1),   // speed growth is capped; density and shields carry late game
       mixTank: tier >= 2 ? Math.min(0.45, 0.2 + 0.03 * (tier - 2)) : 0, mixSprinter: tier >= 4 ? Math.min(0.3, 0.2 + 0.02 * (tier - 4)) : 0,
       terrain: [],   // Bestiary unlocks: Tier 2 Tanks, Tier 4 Sprinters
       gates: [], bumpers: [], holes: []
@@ -326,6 +338,7 @@
       if (nc <= 2 && n > 2 && rnd() < 0.3) sq.unshift('L');
       seqs.push(sq); total += sq.length;
     }
+    if (n >= 9 && total < 2 && nc > 0) { seqs[0].push(seqs[0].indexOf('H') < 0 ? 'H' : 'L'); total++; }   // L9+: at least two gates (gate concurrency 2)
     if (tunApply) {                                      // harness restart: guarantee at least `gateConcurrency` gates exist so the concurrency slider has something to activate
       var want = Math.min(GATE_SLOTS.length, MAX_GATES, Math.round(TUNING.gateConcurrency)), pc = 0;
       while (total < want && nc > 0) { seqs[0].push(pc++ & 1 ? 'H' : 'L'); total++; }
@@ -358,7 +371,7 @@
     L.terrainEff = 1; L.barrCol = [];
     // Phase 12: L1-2 spawn only gray blocks. Blue barricades (rewards) never share a column and each one carries a
     // Threat Budget: a dense red wave in an ADJACENT column, sized by the barricade's hit value.
-    var nbar = n <= 2 ? 0 : Math.min(Math.ceil(MAX_TERRAIN / 2), 1 + (((n - 3) / 8) | 0)), bk;
+    var nbar = n <= 2 ? 0 : Math.min(Math.ceil(MAX_TERRAIN / 2), 1 + (((m - 3) / 8) | 0)), bk;
     L.threats = [];
     for (bk = 0; bk < nbar; bk++) {
       var rt = rnd(), typ = n <= 2 ? 0 : (rt < 0.25 ? 0 : (rt < 0.65 ? 1 : 2));
@@ -369,11 +382,11 @@
       if (yMax < yMin) continue;
       yMin = Math.max(yMin, BASE_BOTTOM + BARR_RUNWAY + 12);   // runway floor: barricade top >= BARR_RUNWAY px under the spawn mouth so a real stack can form
       if (yMax < yMin) continue;                               // gates leave no room: skip this barricade
-      if (n <= POUR_MAX_LEVEL) yMin = Math.max(yMin, yMax - 110);   // Phase 16: Tier-1 dams sit low in the available space, so a pour never stacks into one giant burst
+      if (m <= POUR_MAX_LEVEL) yMin = Math.max(yMin, yMax - 110);   // Phase 16: Tier-1 dams sit low in the available space, so a pour never stacks into one giant burst
       var by = yMin + rnd() * (yMax - yMin), clash = false;
       for (j = 0; j < L.terrain.length; j++) if ((L.barrCol[j] === c && Math.abs(L.terrain[j][1] - by) < 46) || Math.abs(L.terrain[j][1] - by) < 90) clash = true;   // funnel tuning: staggered heights, never a flat row across the lanes
       if (clash) continue;
-      var bx0 = colSpan(nc, c)[0], hits = Math.min(60, Math.round(10 + n * 0.5));
+      var bx0 = colSpan(nc, c)[0], hits = Math.min(60, Math.round(10 + m * 0.5));
       L.terrain.push([bx0 + cw / 2, by, cw / 2, 12, 0, 1, typ, hits]);   // Phase 13: a barricade plugs its whole column (a dam)
       L.barrCol.push(c);
     }
@@ -408,7 +421,7 @@
     L.throughput = levelThroughput(L.mtm) * Math.pow(OBST_BUMPER_EFF, L.bumpers.length) * Math.pow(OBST_HOLE_EFF, L.holes.length) * L.terrainEff;
     L.baseHP = Math.round(L.throughput * BASE_TTK * HP_SCALE * (1 + HP_PER_TIER * (tier - 1)));
     if (L.pour && L.gates.length) L.baseHP = Math.round(L.baseHP * POUR_GATE_HP);   // an endless pour starves gate lanes of leaked blues too: shave their base HP
-    if (L.pour && L.gates.length === 0) { L.baseHit = BASE_HIT; L.baseHP = Math.round(POUR_BASE_HP * Math.pow(1 + ATTRITION, n - 1)); }   // gateless pour levels: a leaked blue hits for BASE_HIT; about POUR_BASE_HP / BASE_HIT = 17 leaks kill the base on L1
+    if (L.pour && L.gates.length === 0) { L.baseHit = BASE_HIT; L.baseHP = Math.round(POUR_BASE_HP * Math.pow(1 + ATTRITION, m - 1)); }   // gateless pour levels: a leaked blue hits for BASE_HIT; about POUR_BASE_HP / BASE_HIT = 17 leaks kill the base on L1
     L.bossHP = isBoss ? Math.round(L.throughput * BOSS_TTK * HP_SCALE) : 0;
     return L;
   }
@@ -836,10 +849,10 @@
     baseMaxHP = L.sandbox ? L.baseHP : Math.max(1, Math.round(L.baseHP * BASE_HP_SCALE)); baseHP = baseMaxHP;   // TTK baseline shift: HQ base HP x0.5 baseHit = L.baseHit || 1;
     bossActive = false; bossMaxHP = L.bossHP; bossHP = L.bossHP; bossHeat = 0;
     cannonHP = CANNON_MAX_HP;
-    redHpMul = (!sandbox && level >= 5) ? Math.pow(RED_HP_GROWTH, level - 5) : 1;   // difficulty buff: compounding per level from L5
+    redHpMul = (!sandbox && effLevel(level) >= 5) ? Math.pow(RED_HP_GROWTH, effLevel(level) - 5) : 1;   // difficulty buff: compounding per level from L5
     if (tunApply && !sandbox) redHpMul = TUNING.mobRedHP / RT_HP[0];
     levelDensity = SPAWN_DENSITY * (L.sandbox ? 1 : (tunApply ? TUNING.mobDensity : densityFor(L.n)));
-    redInterval = L.redInterval / levelDensity; waveMin = L.waveMin; waveMax = L.waveMax; redSpeed = RED_SPEED_BASE * L.redSpeedMul + (sandbox ? 0 : level * RED_SPEED_PER_LEVEL); mixTank = L.mixTank; mixSprinter = L.mixSprinter;
+    redInterval = L.redInterval / levelDensity; waveMin = L.waveMin; waveMax = L.waveMax; redSpeed = RED_SPEED_BASE * L.redSpeedMul + (sandbox ? 0 : effLevel(level) * RED_SPEED_PER_LEVEL); mixTank = L.mixTank; mixSprinter = L.mixSprinter;
     if (tunApply && !sandbox) redSpeed = TUNING.mobSpeed;
     bossSpeed = BOSS_STRAFE * L.redSpeedMul; bossDir = 1; bossX = (AX0 + AX1) / 2; bossY = BASE_Y + BOSS_H / 2 + 20;
     cannonX = targetX = (AX0 + AX1) / 2;
