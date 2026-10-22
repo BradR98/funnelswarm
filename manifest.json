@@ -1,6 +1,6 @@
 {
-  "name": "Mob Swarm",
-  "short_name": "Mob Swarm",
+  "name": "Mob Swarm Funnel",
+  "short_name": "Funnel",
   "description": "Ad-free, battery-friendly multiplier mob shooter.",
   "start_url": "./index.html",
   "scope": "./",

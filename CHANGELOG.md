@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Funnel PWA icon (branch `feature/funnel-logic`)
+- `icon-192.png` and `icon-512.png` now show an orange funnel (with falling red mobs) on top of the original blue/red target, so the funnel build is distinguishable from the original on a phone home screen. The manifest names are "Mob Swarm Funnel" / "Funnel". Build label and cache: `funnel v16`. Already-installed home-screen shortcuts keep the old icon until removed and re-added.
+
 ### Level 7 vetted: two gates from L7 on (branch `feature/funnel-logic`)
 - The vetted L7 export (chute 90, density 2.0, speed 131, HP 1, gate ceiling x1.9, damage 1, bullets 1) already matched the L5-to-L9 ramp, so L8 and later keep following it (L8 87px / 2.1x / 135 / x1.9, L9 as before). The one difference was gate concurrency 2: L7 generated 3 gates. Levels 7 and up now have exactly 2 gates (`maxG`; the harness restart can still pad up to 4 for experiments).
 - Build label and cache: `funnel v15`.
