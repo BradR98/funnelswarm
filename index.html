@@ -8,6 +8,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0b1020">
 <link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <script id="sw-register">
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     var hadController = !!navigator.serviceWorker.controller, reloading = false;
@@ -101,7 +103,7 @@
       <button id="restart" type="button">Next Level</button>
       <div id="warpRow"><label for="lvlInput">Level</label><input id="lvlInput" type="number" inputmode="numeric" min="1" max="9999" value="1"><button id="warp" type="button">Warp</button></div>
     </div>
-    <span id="ver">funnel v20</span><!-- BUILD LABEL: must match CACHE_NAME in sw.js (funnelswarm-v20); bump both together -->
+    <span id="ver">funnel v21</span><!-- BUILD LABEL: must match CACHE_NAME in sw.js (funnelswarm-v21); bump both together -->
     <button id="pause" type="button" aria-label="Pause game" title="Pause">&#10074;&#10074;</button>
     <button id="mute" type="button" aria-label="Mute audio" title="Mute / unmute">&#128266;</button>
   </div>

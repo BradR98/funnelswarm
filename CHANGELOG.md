@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Phase 19 icon links
+- Added explicit `<link rel="icon">` and `apple-touch-icon` to the page head. Without them some browsers (Perplexity Comet) fell back to another game's icon on the same origin.
+
 ### Phase 19 - single chute / funnel (main: v19 / c21; funnel test build: funnel v20)
 Consolidates the funnel branch experiments (detailed per-step history lives in git).
 - **One 96px chute** replaces the 1-4 column board: no dividers, lanes, pressure doors, multiplier zones, trapdoors, spill or threat budget. Reds fall from a centre mouth; the chute narrows 96 -> 84px over L5-9. Dead code for all of those was swept out; the column arrays (`MAX_COLS = 1`) remain only because the L99 sandbox uses them, and blue barricades are retired (generator forces gray/red).
