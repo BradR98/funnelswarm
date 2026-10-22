@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### PWA install diagnostics (branch `feature/funnel-logic`)
+- The tuning panel has a PWA row: it shows whether the browser fired `beforeinstallprompt` (installable and not installed), offers an **Install App** button when it does, and prints the service-worker state plus the live manifest `id`, `scope` and page path. Build label and cache: `funnel v18`.
+
 ### PWA install id fix (branch `feature/funnel-logic`)
 - The manifest `id` was `./index.html`. Browsers resolve `id` against the ORIGIN, not the page folder, so every game on bradr98.github.io with that id (original Mob Swarm, Mob Swarm 2, the funnel) shared one identity: installing one made the others report "already installed". The funnel id is now `/mob-swarm-funnel/`, which is unique. Build label and cache: `funnel v17`.
 

@@ -101,7 +101,7 @@
       <button id="restart" type="button">Next Level</button>
       <div id="warpRow"><label for="lvlInput">Level</label><input id="lvlInput" type="number" inputmode="numeric" min="1" max="9999" value="1"><button id="warp" type="button">Warp</button></div>
     </div>
-    <span id="ver">funnel v17</span><!-- BUILD LABEL: must match CACHE_NAME in sw.js (mob-swarm-funnel-v17); bump both together -->
+    <span id="ver">funnel v18</span><!-- BUILD LABEL: must match CACHE_NAME in sw.js (mob-swarm-funnel-v18); bump both together -->
     <button id="pause" type="button" aria-label="Pause game" title="Pause">&#10074;&#10074;</button>
     <button id="mute" type="button" aria-label="Mute audio" title="Mute / unmute">&#128266;</button>
   </div>
@@ -810,6 +810,19 @@
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(function () { done(true); }, fallback); else fallback();
     };
     body.appendChild(cb);
+    // PWA install diagnostics: Chrome only fires beforeinstallprompt when it thinks the app is installable AND not installed.
+    var pw = document.createElement('div'); pw.className = 'dh-r'; pw.style.cssText = 'margin-top:6px;border-top:1px solid #3a4a7a;padding-top:4px';
+    var pst = document.createElement('div'); pst.textContent = 'PWA: waiting for install event...'; pw.appendChild(pst);
+    var pb = document.createElement('button'); pb.textContent = 'Install App'; pb.style.display = 'none'; pw.appendChild(pb);
+    var pdet = document.createElement('div'); pdet.style.cssText = 'font-size:10px;opacity:.8;word-break:break-all'; pw.appendChild(pdet);
+    body.appendChild(pw);
+    var dip = null;
+    window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); dip = e; pst.textContent = 'PWA: installable (not installed) \u2713'; pb.style.display = 'inline-block'; });
+    pb.onclick = function () { if (dip) { dip.prompt(); dip = null; pb.style.display = 'none'; } };
+    window.addEventListener('appinstalled', function () { pst.textContent = 'PWA: installed'; pb.style.display = 'none'; });
+    var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    setTimeout(function () { if (!dip && /waiting/.test(pst.textContent)) pst.textContent = standalone ? 'PWA: running installed (standalone)' : 'PWA: no install event - the browser believes it is already installed or not installable'; }, 4000);
+    if (navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(function (r) { fetch('manifest.json', { cache: 'no-store' }).then(function (x) { return x.json(); }).then(function (m) { pdet.textContent = 'sw:' + (r ? 'registered' : 'none') + ' id:' + m.id + ' scope:' + m.scope + ' page:' + location.pathname; }).catch(function () {}); }).catch(function () {});
     ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'click'].forEach(function (ev) { box.addEventListener(ev, function (e) { e.stopPropagation(); }); });   // sliders must not fire the cannon or be eaten by the page's touchmove guard
     (document.getElementById('stage') || document.body).appendChild(box);
   })();
