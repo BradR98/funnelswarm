@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Funnel moved to a new URL: https://bradr98.github.io/funnelswarm/ (branch `feature/funnel-logic`)
+- Root cause of "already installed": Chrome on Android matches an installed app's scope by plain string prefix. The installed original is recorded as `https://bradr98.github.io/mob-swarm` (no trailing slash), and `.../mob-swarm-funnel/` starts with that string, so the funnel was treated as part of the original. The preview repo was renamed `mob-swarm-funnel` -> `funnelswarm` so no URL path begins with another game's path. Manifest id is now `/funnelswarm/`; build label `funnel v19`; cache `funnelswarm-v19`. The old `mob-swarm-funnel` URL no longer exists.
+
 ### PWA install diagnostics (branch `feature/funnel-logic`)
 - The tuning panel has a PWA row: it shows whether the browser fired `beforeinstallprompt` (installable and not installed), offers an **Install App** button when it does, and prints the service-worker state plus the live manifest `id`, `scope` and page path. Build label and cache: `funnel v18`.
 
